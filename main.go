@@ -17,11 +17,22 @@ import (
 
 const (
 	vertexShaderSource = `#version 410
-    in vec3 vp;
+
+	vec2 positions[6] = vec2[](
+		vec2(-1, -1),
+		vec2(1, -1),
+		vec2(-1, 1),
+
+		vec2(1, -1),
+		vec2(-1, 1),
+		vec2(1, 1)
+	);
+
 	out vec2 uv;
     void main() {
-        gl_Position = vec4(vp, 1.0);
-		uv = vec2(vp.x + 1.0, 1.0 - vp.y) / 2.0;
+		vec4 pos = vec4(positions[gl_VertexID], 0.0, 1.0);
+		gl_Position = pos;
+		uv = vec2(pos.x + 1.0, 1.0 - pos.y) / 2.0;
     }
 ` + "\x00"
 
@@ -36,13 +47,13 @@ const (
 )
 
 var verts = []float32{
-	-1, -1, 0,
-	1, -1, -0,
-	-1, 1, 0,
+	-1, -1,
+	1, -1,
+	-1, 1,
 
-	1, -1, -0,
-	-1, 1, 0,
-	1, 1, 0,
+	1, -1,
+	-1, 1,
+	1, 1,
 }
 
 func init() {
@@ -78,10 +89,32 @@ func main() {
 		tex:  glTex,
 	}
 
-	for i, r := range "asdfjoisdfj" {
-		rasterized := initTex(r, face)
+	s := "asdfjoisdfj"
+
+	compSize := 4
+	co := make([]float32, len(s)*compSize)
+
+	xadv := 0
+	i2 := 0
+	for i, r := range s {
+		rasterized, metrics := initTex(r, face)
+		fmt.Printf("%v: %+v\n", r, metrics)
 		view.IntoCell(glTex, rasterized, int32(i), 0)
+
+		widthInCell := float32(metrics.Width) / float32(view.size)
+		heightInCell := float32(metrics.Height) / float32(view.size)
+
+		co[i2] = widthInCell
+		co[i2+1] = heightInCell
+
+		co[i+2] = float32(i)
+		co[i+3] = 0
+
+		metrics.Width += xadv
+		i2 += compSize
 	}
+
+	fmt.Printf("co: %+v\n", co)
 
 	CheckGLErrors()
 
@@ -123,9 +156,9 @@ func initFace() *freetype.Face {
 	return face
 }
 
-func initTex(rn rune, face *freetype.Face) *image.RGBA {
+func initTex(rn rune, face *freetype.Face) (*image.RGBA, *freetype.Metrics) {
 
-	img, _, err := face.Glyph(rn)
+	img, metrics, err := face.Glyph(rn)
 	if err != nil {
 		panic(err)
 	}
@@ -140,7 +173,7 @@ func initTex(rn rune, face *freetype.Face) *image.RGBA {
 	// 	panic(err)
 	// }
 
-	return img
+	return img, metrics
 }
 
 func initOpenGL() uint32 {
@@ -195,8 +228,7 @@ func draw(
 	gl.BindTexture(tex.target, tex.handle)
 	gl.ActiveTexture(gl.TEXTURE0)
 
-	gl.BindVertexArray(vao)
-	gl.DrawArrays(gl.TRIANGLES, 0, int32(len(verts)/3))
+	gl.DrawArrays(gl.TRIANGLES, 0, int32(len(verts)/2))
 
 	glfw.PollEvents()
 	window.SwapBuffers()
@@ -216,6 +248,29 @@ func makeVertexArrayObject(vertices []float32) uint32 {
 	gl.VertexAttribPointer(0, 3, gl.FLOAT, false, 0, nil)
 
 	return vao
+}
+
+func makeSegmentVaos(vertices []float32) (uint32, uint32) {
+	var buffer uint32
+	gl.GenBuffers(1, &buffer)
+	gl.BindBuffer(gl.ARRAY_BUFFER, buffer)
+	gl.BufferData(gl.ARRAY_BUFFER, 4*len(vertices), gl.Ptr(vertices), gl.STATIC_DRAW)
+
+	var g_pos uint32
+	gl.GenVertexArrays(1, &g_pos)
+	gl.BindVertexArray(g_pos)
+	gl.EnableVertexAttribArray(1)
+	gl.BindBuffer(gl.ARRAY_BUFFER, buffer)
+	gl.VertexAttribPointer(0, 2, gl.FLOAT, false, 2, nil)
+
+	var g_span uint32
+	gl.GenVertexArrays(1, &g_span)
+	gl.BindVertexArray(g_span)
+	gl.EnableVertexAttribArray(2)
+	gl.BindBuffer(gl.ARRAY_BUFFER, buffer)
+	gl.VertexAttribPointer(0, 2, gl.FLOAT, false, 2, nil)
+
+	return g_pos, g_span
 }
 
 func compileShader(source string, shaderType uint32) (uint32, error) {
