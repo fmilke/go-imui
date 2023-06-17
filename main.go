@@ -18,21 +18,13 @@ import (
 const (
 	vertexShaderSource = `#version 410
 
-	vec2 positions[6] = vec2[](
-		vec2(-1, -1),
-		vec2(1, -1),
-		vec2(-1, 1),
-
-		vec2(1, -1),
-		vec2(-1, 1),
-		vec2(1, 1)
-	);
+	in vec2 a_pos;
+	in vec2 a_uv;
 
 	out vec2 uv;
     void main() {
-		vec4 pos = vec4(positions[gl_VertexID], 0.0, 1.0);
-		gl_Position = pos;
-		uv = vec2(pos.x + 1.0, 1.0 - pos.y) / 2.0;
+		gl_Position = vec4(a_pos.x, -a_pos.y, .0, 1.0);
+		uv = vec2(a_uv.x, a_uv.y);
     }
 ` + "\x00"
 
@@ -41,20 +33,12 @@ const (
 	uniform sampler2D glyphTexture;
     out vec4 clr;
     void main() {
-        clr = vec4(texture(glyphTexture, uv));
+        clr = vec4(texture(glyphTexture, uv)) + vec4(uv, .05, 1.0);
     }
 ` + "\x00"
 )
 
-var verts = []float32{
-	-1, -1,
-	1, -1,
-	-1, 1,
-
-	1, -1,
-	-1, 1,
-	1, 1,
-}
+const GL_S_FLOAT = 4
 
 func init() {
 	runtime.LockOSThread()
@@ -78,7 +62,6 @@ func main() {
 	window.MakeContextCurrent()
 
 	program := initOpenGL()
-	vao := makeVertexArrayObject(verts)
 	CheckGLErrorsPrint("Pre tex")
 
 	glTex := newGlyphTexture(1024)
@@ -91,38 +74,135 @@ func main() {
 
 	s := "asdfjoisdfj"
 
-	compSize := 4
-	co := make([]float32, len(s)*compSize)
+	verticesPerRune := 6
+	componentPerVertex := 4
+	runeStride := componentPerVertex * verticesPerRune
+	co := make([]float32, len(s)*runeStride)
 
 	xadv := 0
-	i2 := 0
+	coi := 0
+
+	indices := 0
 	for i, r := range s {
 		rasterized, metrics := initTex(r, face)
-		fmt.Printf("%v: %+v\n", r, metrics)
+		// fmt.Printf("%v: %+v\n", r, metrics)
 		view.IntoCell(glTex, rasterized, int32(i), 0)
 
-		widthInCell := float32(metrics.Width) / float32(view.size)
-		heightInCell := float32(metrics.Height) / float32(view.size)
+		appendRune(xadv, coi, &co, metrics)
 
-		co[i2] = widthInCell
-		co[i2+1] = heightInCell
+		fmt.Printf("Rune: %v Vertex Data: %v\n", string(r), co[coi:coi+runeStride])
 
-		co[i+2] = float32(i)
-		co[i+3] = 0
+		coi += runeStride
 
-		metrics.Width += xadv
-		i2 += compSize
+		xadv += metrics.Width
+		indices += verticesPerRune
 	}
 
 	fmt.Printf("co: %+v\n", co)
+
+	makeSegmentVaos(co)
 
 	CheckGLErrors()
 
 	log.Println("Program", program)
 
 	for !window.ShouldClose() {
-		draw(vao, window, program, glTex)
+		draw(1, window, program, glTex, int32(indices))
 	}
+}
+
+func appendRune(
+	xAdv int,
+	i int,
+	verts *[]float32,
+	metrics *freetype.Metrics,
+) {
+	cell_w := float32(1024 / 32)
+	cell_h := float32(1024 / 32)
+
+	cell_w_cs := 2.0 / cell_w
+	cell_h_cs := 2.0 / cell_h
+
+	x := float32(-1.0 + cell_w_cs*float32(i/24))
+	y := float32(-1.0)
+	w := float32(cell_w_cs)
+	h := float32(cell_h_cs)
+
+	insertQuad(verts, i, x, y, w, h)
+}
+
+// func appendRune(
+// 	xAdv int,
+// 	i int,
+// 	verts *[]float32,
+// 	metrics *freetype.Metrics,
+// ) {
+// 	px_x := 2.0 / 640.0
+// 	px_y := 2.0 / 480.0
+
+// 	(*verts)[i] = float32(xAdv)
+
+// 	x_offset := float32(px_x) * float32(xAdv)
+// 	y_offset := 0.0
+
+// 	tl_x := x_offset
+// 	tl_y := float32(y_offset * px_y)
+
+// 	w := float32(metrics.Width) * float32(px_x)
+// 	h := float32(metrics.Height) * float32(px_y)
+
+// 	insertQuad(verts, i, tl_x-1.0, tl_y-1.0, w, h)
+// }
+
+func insertQuad(
+	verts *[]float32,
+	i int,
+	x float32,
+	y float32,
+	w float32,
+	h float32,
+) {
+
+	u_max := 1.0 / float32(1024/32)
+	v_max := 1.0 / float32(1024/32)
+
+	(*verts)[i] = x
+	(*verts)[i+1] = y
+
+	(*verts)[i+2] = 0
+	(*verts)[i+3] = 0
+
+	(*verts)[i+4] = x + w
+	(*verts)[i+5] = y
+
+	(*verts)[i+6] = u_max
+	(*verts)[i+7] = 0
+
+	(*verts)[i+8] = x
+	(*verts)[i+9] = y + h
+
+	(*verts)[i+10] = 0
+	(*verts)[i+11] = v_max
+
+	//
+
+	(*verts)[i+12] = x
+	(*verts)[i+13] = y + h
+
+	(*verts)[i+14] = 0
+	(*verts)[i+15] = v_max
+
+	(*verts)[i+16] = x + w
+	(*verts)[i+17] = y
+
+	(*verts)[i+18] = u_max
+	(*verts)[i+19] = 0
+
+	(*verts)[i+20] = x + w
+	(*verts)[i+21] = y + h
+
+	(*verts)[i+22] = u_max
+	(*verts)[i+23] = v_max
 }
 
 func initFace() *freetype.Face {
@@ -221,6 +301,7 @@ func draw(
 	window *glfw.Window,
 	program uint32,
 	tex *GlyphTexture,
+	indices int32,
 ) {
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 	gl.UseProgram(program)
@@ -228,26 +309,10 @@ func draw(
 	gl.BindTexture(tex.target, tex.handle)
 	gl.ActiveTexture(gl.TEXTURE0)
 
-	gl.DrawArrays(gl.TRIANGLES, 0, int32(len(verts)/2))
+	gl.DrawArrays(gl.TRIANGLES, 0, indices)
 
 	glfw.PollEvents()
 	window.SwapBuffers()
-}
-
-func makeVertexArrayObject(vertices []float32) uint32 {
-	var buffer uint32
-	gl.GenBuffers(1, &buffer)
-	gl.BindBuffer(gl.ARRAY_BUFFER, buffer)
-	gl.BufferData(gl.ARRAY_BUFFER, 4*len(vertices), gl.Ptr(vertices), gl.STATIC_DRAW)
-
-	var vao uint32
-	gl.GenVertexArrays(1, &vao)
-	gl.BindVertexArray(vao)
-	gl.EnableVertexAttribArray(0)
-	gl.BindBuffer(gl.ARRAY_BUFFER, buffer)
-	gl.VertexAttribPointer(0, 3, gl.FLOAT, false, 0, nil)
-
-	return vao
 }
 
 func makeSegmentVaos(vertices []float32) (uint32, uint32) {
@@ -259,18 +324,15 @@ func makeSegmentVaos(vertices []float32) (uint32, uint32) {
 	var g_pos uint32
 	gl.GenVertexArrays(1, &g_pos)
 	gl.BindVertexArray(g_pos)
+	gl.EnableVertexAttribArray(0)
+	gl.BindBuffer(gl.ARRAY_BUFFER, buffer)
+	gl.VertexAttribPointer(0, 2, gl.FLOAT, false, GL_S_FLOAT*4, nil)
+
 	gl.EnableVertexAttribArray(1)
 	gl.BindBuffer(gl.ARRAY_BUFFER, buffer)
-	gl.VertexAttribPointer(0, 2, gl.FLOAT, false, 2, nil)
+	gl.VertexAttribPointer(1, 2, gl.FLOAT, false, GL_S_FLOAT*4, gl.PtrOffset(GL_S_FLOAT*2))
 
-	var g_span uint32
-	gl.GenVertexArrays(1, &g_span)
-	gl.BindVertexArray(g_span)
-	gl.EnableVertexAttribArray(2)
-	gl.BindBuffer(gl.ARRAY_BUFFER, buffer)
-	gl.VertexAttribPointer(0, 2, gl.FLOAT, false, 2, nil)
-
-	return g_pos, g_span
+	return g_pos, g_pos
 }
 
 func compileShader(source string, shaderType uint32) (uint32, error) {
@@ -329,10 +391,10 @@ func (c *GlyphView) IntoCell(
 	cw := t.width / c.size
 	ch := t.height / c.size
 
-	fmt.Printf("csize, cx,cy,x,y,w,h: %v %v,%v,%v, %v, %v, %v\n", c.size, cx, cy, cx*cw,
-		cy*ch,
-		iw,
-		ih)
+	// fmt.Printf("csize, cx,cy,x,y,w,h: %v %v,%v,%v, %v, %v, %v\n", c.size, cx, cy, cx*cw,
+	// 	cy*ch,
+	// 	iw,
+	// 	ih)
 
 	gl.BindTexture(t.target, t.handle)
 	CheckGLErrorsPrint("BindTexture")
