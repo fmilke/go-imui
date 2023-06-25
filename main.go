@@ -5,6 +5,7 @@ import (
 	"image"
 	"io/ioutil"
 	"log"
+	"math"
 	"runtime"
 	"strings"
 	"unsafe"
@@ -33,18 +34,27 @@ const (
 	uniform sampler2D glyphTexture;
     out vec4 clr;
     void main() {
-        clr = vec4(texture(glyphTexture, uv)) + vec4(uv, .05, 1.0);
+        clr = vec4(texture(glyphTexture, uv));
     }
 ` + "\x00"
 )
 
 const GL_S_FLOAT = 4
+const PT_PER_LOGICAL_INCH = 72.0
+const PIXELS_PER_LOGICAL_INCH = 96.0 // aka. DPI
+
+const WIN_WIDTH = 640
+const WIN_HEIGHT = 480
+
+const LOG_FONT = true;
 
 func init() {
 	runtime.LockOSThread()
 }
 
 func main() {
+	testConversions()
+
 	err := glfw.Init()
 
 	if err != nil {
@@ -53,7 +63,7 @@ func main() {
 
 	defer glfw.Terminate()
 
-	window, err := glfw.CreateWindow(640, 480, "Testing", nil, nil)
+	window, err := glfw.CreateWindow(WIN_WIDTH, WIN_HEIGHT, "Testing", nil, nil)
 
 	if err != nil {
 		panic(err)
@@ -65,36 +75,33 @@ func main() {
 	CheckGLErrorsPrint("Pre tex")
 
 	glTex := newGlyphTexture(1024)
-	face := initFace()
+	face := initFace(32)
 
 	view := GlyphView{
 		size: 32,
 		tex:  glTex,
 	}
 
-	s := "asdfjoisdfj"
+	s := "Asdfjoisdfj"
 
 	verticesPerRune := 6
 	componentPerVertex := 4
 	runeStride := componentPerVertex * verticesPerRune
 	co := make([]float32, len(s)*runeStride)
 
-	xadv := 0
+	xadv := 0.0
 	coi := 0
 
 	indices := 0
 	for i, r := range s {
 		rasterized, metrics := initTex(r, face)
-		// fmt.Printf("%v: %+v\n", r, metrics)
+		fmt.Printf("%v: %v,%v\n", string(r), metrics.Width, metrics.Height)
 		view.IntoCell(glTex, rasterized, int32(i), 0)
 
 		appendRune(xadv, coi, &co, metrics)
-
-		fmt.Printf("Rune: %v Vertex Data: %v\n", string(r), co[coi:coi+runeStride])
-
 		coi += runeStride
 
-		xadv += metrics.Width
+		xadv += float64(metrics.Width)
 		indices += verticesPerRune
 	}
 
@@ -112,47 +119,52 @@ func main() {
 }
 
 func appendRune(
-	xAdv int,
+	xAdv float64,
 	i int,
 	verts *[]float32,
 	metrics *freetype.Metrics,
 ) {
-	cell_w := float32(1024 / 32)
-	cell_h := float32(1024 / 32)
+	px_x := 2.0 / float64(WIN_WIDTH)
+	px_y := 2.0 / float64(WIN_HEIGHT)
 
-	cell_w_cs := 2.0 / cell_w
-	cell_h_cs := 2.0 / cell_h
+	x_offset := float32(px_x) * float32(xAdv)
+	y_offset := float64(metrics.HorizontalBearingY)
 
-	x := float32(-1.0 + cell_w_cs*float32(i/24))
-	y := float32(-1.0)
-	w := float32(cell_w_cs)
-	h := float32(cell_h_cs)
+	tl_x := x_offset
+	tl_y := float32(y_offset * px_y)
 
-	insertQuad(verts, i, x, y, w, h)
+	w := float32(metrics.Width) * float32(px_x)
+	h := float32(metrics.Height) * float32(px_y)
+
+
+	fmt.Printf("x: %v,y: %v, w: %v, h: %v\n", tl_x- 1.0, tl_y-1.0, w, h)
+
+	cellWidth := float32(1024 / 32)
+	cellHeight := float32(1024 / 32)
+
+	widthRatio := float32(metrics.Width) / cellWidth
+	heightRatio := float32(metrics.Height) / cellHeight
+
+	uOffset := float32(i)/24.0*float32(32.0/1024.0)
+	vOffset := float32(0.0)
+	uWidth := 1.0/cellWidth * widthRatio
+	vWidth := 1.0/cellHeight * heightRatio
+
+	fmt.Printf("uv: ux: %v, uy %v, uw: %v, uh: %v\n", uOffset, vOffset, uWidth, vWidth)
+
+	insertQuad(
+		verts,
+		i,
+		tl_x-1.0,
+		tl_y-1.0,
+		w,
+		h,
+		uOffset,
+		vOffset,
+		uWidth,
+		vWidth,
+	)
 }
-
-// func appendRune(
-// 	xAdv int,
-// 	i int,
-// 	verts *[]float32,
-// 	metrics *freetype.Metrics,
-// ) {
-// 	px_x := 2.0 / 640.0
-// 	px_y := 2.0 / 480.0
-
-// 	(*verts)[i] = float32(xAdv)
-
-// 	x_offset := float32(px_x) * float32(xAdv)
-// 	y_offset := 0.0
-
-// 	tl_x := x_offset
-// 	tl_y := float32(y_offset * px_y)
-
-// 	w := float32(metrics.Width) * float32(px_x)
-// 	h := float32(metrics.Height) * float32(px_y)
-
-// 	insertQuad(verts, i, tl_x-1.0, tl_y-1.0, w, h)
-// }
 
 func insertQuad(
 	verts *[]float32,
@@ -161,27 +173,34 @@ func insertQuad(
 	y float32,
 	w float32,
 	h float32,
+	u float32,
+	v float32,
+	uw float32,
+	vh float32,
 ) {
 
-	u_max := 1.0 / float32(1024/32)
-	v_max := 1.0 / float32(1024/32)
+	u_min := u
+	v_min := v
+
+	u_max := u + uw
+	v_max := v + vh
 
 	(*verts)[i] = x
 	(*verts)[i+1] = y
 
-	(*verts)[i+2] = 0
-	(*verts)[i+3] = 0
+	(*verts)[i+2] = u_min
+	(*verts)[i+3] = v_min
 
 	(*verts)[i+4] = x + w
 	(*verts)[i+5] = y
 
 	(*verts)[i+6] = u_max
-	(*verts)[i+7] = 0
+	(*verts)[i+7] = v_min
 
 	(*verts)[i+8] = x
 	(*verts)[i+9] = y + h
 
-	(*verts)[i+10] = 0
+	(*verts)[i+10] = u_min
 	(*verts)[i+11] = v_max
 
 	//
@@ -189,14 +208,14 @@ func insertQuad(
 	(*verts)[i+12] = x
 	(*verts)[i+13] = y + h
 
-	(*verts)[i+14] = 0
+	(*verts)[i+14] = u_min
 	(*verts)[i+15] = v_max
 
 	(*verts)[i+16] = x + w
 	(*verts)[i+17] = y
 
 	(*verts)[i+18] = u_max
-	(*verts)[i+19] = 0
+	(*verts)[i+19] = v_min
 
 	(*verts)[i+20] = x + w
 	(*verts)[i+21] = y + h
@@ -205,7 +224,7 @@ func insertQuad(
 	(*verts)[i+23] = v_max
 }
 
-func initFace() *freetype.Face {
+func initFace(px float32) *freetype.Face {
 	fonts, err := findfont.Find("Arial", findfont.FontRegular)
 
 	if err != nil {
@@ -228,12 +247,26 @@ func initFace() *freetype.Face {
 		panic(err)
 	}
 
-	err = face.Pt(32, 72)
+	pt := int(pxToPt(px))
+
+	if LOG_FONT {
+		fmt.Printf("Retrieving font face of size %vpt\n", pt)
+	}
+	
+	err = face.Pt(pt, int(PIXELS_PER_LOGICAL_INCH))
 	if err != nil {
 		panic(err)
 	}
 
 	return face
+}
+
+func ptToPx(pt float32) float32 {
+	return pt * (PIXELS_PER_LOGICAL_INCH / PT_PER_LOGICAL_INCH)
+}
+
+func pxToPt(px float32) float32 {
+	return px * (PT_PER_LOGICAL_INCH / PIXELS_PER_LOGICAL_INCH)
 }
 
 func initTex(rn rune, face *freetype.Face) (*image.RGBA, *freetype.Metrics) {
@@ -510,4 +543,17 @@ type Tex struct {
 type Dimensions struct {
 	width  uint32
 	height uint32
+}
+
+func testConversions() {
+
+	r := math.Abs(float64(pxToPt(16)) - (12))
+	if r > 0.0001 {
+		fmt.Printf("pxToPt is off\n: %v", r)
+	}
+
+	r2 := math.Abs(float64(ptToPx(12)) - (16))
+	if r2 > 0.0001 {
+		fmt.Printf("ptToPx is off: %v\n", r2)
+	}
 }
