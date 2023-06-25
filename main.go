@@ -24,7 +24,8 @@ const (
 
 	out vec2 uv;
     void main() {
-		gl_Position = vec4(a_pos.x, -a_pos.y, .0, 1.0);
+		vec2 pos_normalized = vec2(a_pos.x - .5, .5 - a_pos.y)* 2.0;
+		gl_Position = vec4(pos_normalized, .0, 1.0);
 		uv = vec2(a_uv.x, a_uv.y);
     }
 ` + "\x00"
@@ -119,25 +120,28 @@ func main() {
 }
 
 func appendRune(
-	xAdv float64,
+	_xAdv float64,
 	i int,
 	verts *[]float32,
 	metrics *freetype.Metrics,
 ) {
-	px_x := 2.0 / float64(WIN_WIDTH)
-	px_y := 2.0 / float64(WIN_HEIGHT)
+	px_x := 1.0 / float32(WIN_WIDTH)
+	px_y := 1.0 / float32(WIN_HEIGHT)
 
-	x_offset := float32(px_x) * float32(xAdv)
-	y_offset := float64(metrics.HorizontalBearingY)
+	xAdv := float32(_xAdv)
 
-	tl_x := x_offset
-	tl_y := float32(y_offset * px_y)
+	char_width := float32(metrics.Width)
+	char_height := float32(metrics.Height)
 
-	w := float32(metrics.Width) * float32(px_x)
-	h := float32(metrics.Height) * float32(px_y)
+	char_hbear_y := float32(metrics.HorizontalBearingY)
 
+	x := xAdv * px_x
+	y := char_hbear_y * px_y
 
-	fmt.Printf("x: %v,y: %v, w: %v, h: %v\n", tl_x- 1.0, tl_y-1.0, w, h)
+	w := char_width * px_x
+	h := char_height * px_y
+
+	fmt.Printf("x: %v,y: %v, w: %v, h: %v\n", x, y, w, h)
 
 	cellWidth := float32(1024 / 32)
 	cellHeight := float32(1024 / 32)
@@ -155,8 +159,8 @@ func appendRune(
 	insertQuad(
 		verts,
 		i,
-		tl_x-1.0,
-		tl_y-1.0,
+		x,
+		y,
 		w,
 		h,
 		uOffset,
