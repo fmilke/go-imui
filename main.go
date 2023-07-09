@@ -83,7 +83,7 @@ func main() {
 		tex:  glTex,
 	}
 
-	s := "Asdfjoisdfj"
+	s := "Asdfjoidfj"
 
 	verticesPerRune := 6
 	componentPerVertex := 4
@@ -135,8 +135,10 @@ func appendRune(
 
 	char_hbear_y := float32(metrics.HorizontalBearingY)
 
+	fixed_offset := float32(30.0)
+
 	x := xAdv * px_x
-	y := char_hbear_y * px_y
+	y := (fixed_offset-char_hbear_y) * px_y
 
 	w := char_width * px_x
 	h := char_height * px_y
