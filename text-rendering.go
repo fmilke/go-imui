@@ -1,0 +1,204 @@
+package main
+
+import (
+	"fmt"
+	"image"
+	"io/ioutil"
+
+	"github.com/danielgatis/go-findfont/findfont"
+	"github.com/danielgatis/go-freetype/freetype"
+)
+
+
+const PT_PER_LOGICAL_INCH = 72.0
+const PIXELS_PER_LOGICAL_INCH = 96.0 // aka. DPI
+
+
+type GlyphTexture struct {
+	handle  uint32
+	target  uint32
+	width   int32
+	height  int32
+}
+
+type GlyphView struct {
+	size int32
+	tex  *GlyphTexture
+}
+
+func appendRune(
+	_xAdv float64,
+	i int,
+	verts *[]float32,
+	metrics *freetype.Metrics,
+) {
+	px_x := 1.0 / float32(WIN_WIDTH)
+	px_y := 1.0 / float32(WIN_HEIGHT)
+
+	xAdv := float32(_xAdv)
+
+	char_width := float32(metrics.Width)
+	char_height := float32(metrics.Height)
+
+	char_hbear_y := float32(metrics.HorizontalBearingY)
+
+	fixed_offset := float32(30.0)
+
+	x := xAdv * px_x
+	y := (fixed_offset-char_hbear_y) * px_y
+
+	w := char_width * px_x
+	h := char_height * px_y
+
+	fmt.Printf("x: %v,y: %v, w: %v, h: %v\n", x, y, w, h)
+
+	cellWidth := float32(1024 / 32)
+	cellHeight := float32(1024 / 32)
+
+	widthRatio := float32(metrics.Width) / cellWidth
+	heightRatio := float32(metrics.Height) / cellHeight
+
+	uOffset := float32(i)/24.0*float32(32.0/1024.0)
+	vOffset := float32(0.0)
+	uWidth := 1.0/cellWidth * widthRatio
+	vWidth := 1.0/cellHeight * heightRatio
+
+	fmt.Printf("segment data: uv: ux: %v, uy %v, uw: %v, uh: %v\n", uOffset, vOffset, uWidth, vWidth)
+
+	insertQuad(
+		verts,
+		i,
+		x,
+		y,
+		w,
+		h,
+		uOffset,
+		vOffset,
+		uWidth,
+		vWidth,
+	)
+}
+
+func insertQuad(
+	verts *[]float32,
+	i int,
+	x float32,
+	y float32,
+	w float32,
+	h float32,
+	u float32,
+	v float32,
+	uw float32,
+	vh float32,
+) {
+
+	u_min := u
+	v_min := v
+
+	u_max := u + uw
+	v_max := v + vh
+
+	(*verts)[i] = x
+	(*verts)[i+1] = y
+
+	(*verts)[i+2] = u_min
+	(*verts)[i+3] = v_min
+
+	(*verts)[i+4] = x + w
+	(*verts)[i+5] = y
+
+	(*verts)[i+6] = u_max
+	(*verts)[i+7] = v_min
+
+	(*verts)[i+8] = x
+	(*verts)[i+9] = y + h
+
+	(*verts)[i+10] = u_min
+	(*verts)[i+11] = v_max
+
+	//
+
+	(*verts)[i+12] = x
+	(*verts)[i+13] = y + h
+
+	(*verts)[i+14] = u_min
+	(*verts)[i+15] = v_max
+
+	(*verts)[i+16] = x + w
+	(*verts)[i+17] = y
+
+	(*verts)[i+18] = u_max
+	(*verts)[i+19] = v_min
+
+	(*verts)[i+20] = x + w
+	(*verts)[i+21] = y + h
+
+	(*verts)[i+22] = u_max
+	(*verts)[i+23] = v_max
+}
+
+func initFace(px float32) *freetype.Face {
+	fonts, err := findfont.Find("Arial", findfont.FontRegular)
+
+	if err != nil {
+		panic(err)
+	}
+
+	data, err := ioutil.ReadFile(fonts[0][2])
+
+	if err != nil {
+		panic(err)
+	}
+
+	lib, err := freetype.NewLibrary()
+	if err != nil {
+		panic(err)
+	}
+
+	face, err := freetype.NewFace(lib, data, 0)
+	if err != nil {
+		panic(err)
+	}
+
+	pt := int(pxToPt(px))
+
+	if LOG_FONT {
+		fmt.Printf("Retrieving font face of size %vpt\n", pt)
+	}
+	
+	err = face.Pt(pt, int(PIXELS_PER_LOGICAL_INCH))
+	if err != nil {
+		panic(err)
+	}
+
+	return face
+}
+
+func ptToPx(pt float32) float32 {
+	return pt * (PIXELS_PER_LOGICAL_INCH / PT_PER_LOGICAL_INCH)
+}
+
+func pxToPt(px float32) float32 {
+	return px * (PT_PER_LOGICAL_INCH / PIXELS_PER_LOGICAL_INCH)
+}
+
+func initTex(rn rune, face *freetype.Face) (*image.RGBA, *freetype.Metrics) {
+
+	img, metrics, err := face.Glyph(rn)
+	if err != nil {
+		panic(err)
+	}
+
+	// TODO: Add cleanup?
+	// err = face.Done()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// err = lib.Done()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	return img, metrics
+}
