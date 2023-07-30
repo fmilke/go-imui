@@ -202,3 +202,49 @@ func initTex(rn rune, face *freetype.Face) (*image.RGBA, *freetype.Metrics) {
 
 	return img, metrics
 }
+
+
+func CalculateSegments(
+	fontFace *freetype.Face,
+	glyphView GlyphView,
+	glyphTex *GlyphTexture,
+	s string,
+) int {
+
+	verticesPerRune := 6
+	componentPerVertex := 4
+	runeStride := componentPerVertex * verticesPerRune
+	co := make([]float32, len(s)*runeStride)
+
+	xadv := 0.0
+	coi := 0
+
+	indices := 0
+	cellSlotX := int32(0)
+	for _, r := range s {
+
+		if r == ' ' {
+			xadv += 24.0
+			fmt.Printf("Skipping space")
+			continue
+		}
+		rasterized, metrics := initTex(r, fontFace)
+
+		fmt.Printf("Rune: '%v': %v,%v\n", string(r), metrics.Width, metrics.Height)
+		glyphView.IntoCell(glyphTex, rasterized, cellSlotX, 0)
+
+		appendRune(xadv, coi, &co, metrics)
+		coi += runeStride
+
+		xadv += float64(metrics.Width)
+		indices += verticesPerRune
+		cellSlotX++
+	}
+
+	fmt.Printf("co: %+v\n", co)
+
+	makeSegmentVaos(co)
+	CheckGLErrors()
+
+	return indices
+}
