@@ -225,7 +225,7 @@ func CalculateSegments(
 
 		if r == ' ' {
 			xadv += 24.0
-			fmt.Printf("Skipping space")
+			fmt.Printf("Skipping space\n")
 			continue
 		}
 		rasterized, metrics := initTex(r, fontFace)
