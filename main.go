@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/benoitkugler/textlayout/fonts/truetype"
 	"github.com/benoitkugler/textlayout/harfbuzz"
@@ -38,7 +39,12 @@ func main() {
 
 	app := createApp()
 	app.Init(WIN_WIDTH, WIN_HEIGHT, WIN_NAME)
-	app.Loop()
+
+	path := GetSomeFont()
+	ttf, err := LoadTTF(path)
+	hbFont := HBFont(ttf)
+
+	app.Loop(ttf, hbFont)
 }
 
 type App struct {
@@ -83,7 +89,26 @@ func (a *App) Init(width int, height int, name string) {
 	a.fontFace = face
 }
 
-func (a *App) Loop() {
+func (a *App) Loop(
+	ttf *truetype.Font,
+	hbFont *harfbuzz.Font,
+) {
+
+	fmt.Println("======")
+	indices := renderText(
+		"Someetext",
+		ttf,
+		hbFont,
+		a.fontFace,
+		a.glyphView,
+		a.glyphTex,
+	)
+	for !a.window.ShouldClose() {
+		draw(1, a.window, a.program, a.glyphTex, int32(indices))
+	}
+}
+
+func (a *App) Loop2() {
 
 	indices := CalculateSegments(
 		a.fontFace,
@@ -141,6 +166,68 @@ func getBuffer() {
 		fmt.Printf("glyph: %v\n", g)
 	}
 }
+
+func GetSomeFont() string {
+	fs, err := findfont.Find("Arial", findfont.FontRegular)
+
+	if err != nil {
+		panic(err)
+	}
+
+	path := fs[0][2]
+	return path
+}
+
+func getHbFont() *harfbuzz.Font {
+	fs, err := findfont.Find("Arial", findfont.FontRegular)
+
+	if err != nil {
+		panic(err)
+	}
+
+	f := fs[0][2]
+
+	file, err := os.Open(f)
+	
+	if err != nil {
+		panic(err)
+	}
+
+	font, err := truetype.Parse(file)
+
+	if err != nil {
+		panic(err)
+	}
+
+	hbFont := HBFont(font)
+
+	return hbFont
+}
+
+func renderText(
+	text string,
+	ttf *truetype.Font,
+	hbFont *harfbuzz.Font,
+	fontFace *freetype.Face,
+	glyphView GlyphView,
+	glyphTex *GlyphTexture,
+) int {
+	// TODO: Check if pointer into string based
+	// solution is more efficient
+
+	indicesToRender := 0
+
+	segments :=	strings.Fields(text)
+
+	for _, s := range segments {
+		//indicesToRender += renderSegment(fontFace, s, hbFont, glyphView, glyphTex)
+		seg := CalculateSegment(ttf, s, hbFont)
+		indicesToRender += RenderSegment(&seg, fontFace, glyphView, glyphTex)
+	}
+
+	return indicesToRender
+}
+
 
 func testConversions() {
 

@@ -2,10 +2,13 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"image"
 	"io/ioutil"
 
 	"github.com/danielgatis/go-findfont/findfont"
+	"github.com/benoitkugler/textlayout/harfbuzz"
+	"github.com/benoitkugler/textlayout/fonts/truetype"
 	"github.com/danielgatis/go-freetype/freetype"
 )
 
@@ -26,16 +29,20 @@ type GlyphView struct {
 	tex  *GlyphTexture
 }
 
+func NewGlyphTexture() {
+}
+
+func NewGlyphView() {
+}
+
 func appendRune(
-	_xAdv float64,
+	xAdv float32,
 	i int,
 	verts *[]float32,
 	metrics *freetype.Metrics,
 ) {
 	px_x := 1.0 / float32(WIN_WIDTH)
 	px_y := 1.0 / float32(WIN_HEIGHT)
-
-	xAdv := float32(_xAdv)
 
 	char_width := float32(metrics.Width)
 	char_height := float32(metrics.Height)
@@ -233,7 +240,7 @@ func CalculateSegments(
 		fmt.Printf("Rune: '%v': %v,%v\n", string(r), metrics.Width, metrics.Height)
 		glyphView.IntoCell(glyphTex, rasterized, cellSlotX, 0)
 
-		appendRune(xadv, coi, &co, metrics)
+		appendRune(float32(xadv), coi, &co, metrics)
 		coi += runeStride
 
 		xadv += float64(metrics.Width)
@@ -247,4 +254,167 @@ func CalculateSegments(
 	CheckGLErrors()
 
 	return indices
+}
+
+type Glyph struct {
+	XAdvance float32
+	YAdvance float32
+	XOffset float32
+	YOffset float32
+	R rune
+}
+
+type Segment struct {
+	Glyphs []Glyph
+}
+
+func LoadTTF(path string) (*truetype.Font, error) {
+	fs, err := findfont.Find("Arial", findfont.FontRegular)
+
+	if err != nil {
+		return nil, err
+	}
+
+	f := fs[0][2]
+
+	file, err := os.Open(f)
+	
+	if err != nil {
+		return nil, err
+	}
+
+	font, err := truetype.Parse(file)
+
+	return font, err
+}
+
+func CalculateSegment(
+	ttf *truetype.Font,
+	text string,
+	hbFont *harfbuzz.Font,
+) Segment {
+	buf := harfbuzz.NewBuffer()
+	rs := []rune(text)
+
+	buf.AddRunes(rs, 0, len(rs))
+	buf.Shape(hbFont, []harfbuzz.Feature{})
+
+	metric := GetDefaultMetric()
+	factor := float32(FontScaleFactor(ttf, metric, 14))
+
+	var segment Segment
+
+	for i, g := range buf.Pos {
+		fmt.Printf("Calculating for glyph: %+v \n", g)
+
+		segment.Glyphs = append(segment.Glyphs, Glyph{
+			XAdvance: float32(g.XAdvance) * factor + 24.0,
+			YAdvance: float32(g.YAdvance) * factor,
+			XOffset: float32(g.XOffset),
+			YOffset: float32(g.YOffset),
+			R: rs[i],
+		})
+	}
+
+	return segment
+}
+
+const VERTS_PER_GLYPH = 6
+const COMPS_PER_VERT = 4
+const COMPS_PER_GLYPH = VERTS_PER_GLYPH * COMPS_PER_VERT
+
+func RenderSegment(
+	segment *Segment,
+	fontFace *freetype.Face,
+	glyphView GlyphView,
+	glyphTex *GlyphTexture,
+) int {
+	glyphCount := len(segment.Glyphs)
+	vertices := make([]float32, glyphCount*COMPS_PER_GLYPH)
+
+	cellSlotX := int32(0)
+	xadv := float32(0.0)
+	coi := 0
+
+	for _, g := range segment.Glyphs {
+
+		if g.R == ' ' {
+			xadv += 24.0
+			continue
+		}
+
+		// Copy rasterized image
+		rasterized, metrics := initTex(g.R, fontFace)
+
+		// Copy into texture
+		glyphView.IntoCell(glyphTex, rasterized, cellSlotX, 0)
+
+		// Write vertex buffer
+		appendRune(xadv, coi, &vertices, metrics)
+
+		fmt.Printf("xadv: %v\n", xadv)
+
+		xadv += g.XAdvance
+		coi += COMPS_PER_GLYPH
+
+		cellSlotX++
+	}
+ 
+	makeSegmentVaos(vertices)
+	CheckGLErrorsPrint("RenderSegment: makeSegmentVaos")
+
+	return glyphCount * VERTS_PER_GLYPH
+}
+
+func renderSegment(
+	fontFace *freetype.Face,
+	segment string,
+	hbFont *harfbuzz.Font,
+	glyphView GlyphView,
+	glyphTex *GlyphTexture,
+) int {
+	verticesPerRune := 6
+	componentPerVertex := 4
+	runeStride := componentPerVertex * verticesPerRune
+	indicesToRender := 0
+	// TODO: Reuse buffer?
+	
+	buf := harfbuzz.NewBuffer()
+	text := []rune(segment)
+	buf.AddRunes(text, 0, len(text))
+	cellSlotX := int32(0)
+	xadv := 0.0
+
+	co := make([]float32, len(segment)*runeStride)
+	buf.Shape(hbFont, []harfbuzz.Feature{})
+
+	//metric := GetDefaultMetric()
+	//factor := FontScaleFactor(ttf, metric, 14)
+
+	for i, g := range buf.Pos {
+		fmt.Printf("glyph: %v\n", g)
+		// TODO: Check for faster way to access rune
+		// TODO: Also this access does not respect unicode
+		r := rune(segment[i])
+		
+		rasterized, _ := initTex(r, fontFace)
+		glyphView.IntoCell(glyphTex, rasterized, cellSlotX, 0)
+
+		xadv += float64(g.XAdvance)
+		indicesToRender += verticesPerRune
+		cellSlotX++
+	}
+
+	makeSegmentVaos(co)
+	CheckGLErrors()
+
+	return indicesToRender
+}
+
+func FontScaleFactor(font *truetype.Font, m Metric, size Sp) float32 {
+	sizePx := m.Sp(size)
+
+	upem := font.Upem()
+	factor := float32(sizePx) / float32(upem)
+	return factor
 }
