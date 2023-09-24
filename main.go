@@ -168,7 +168,7 @@ func getBuffer() {
 }
 
 func GetSomeFont() string {
-	fs, err := findfont.Find("Arial", findfont.FontRegular)
+	fs, err := findfont.Find("Noto Sans", findfont.FontRegular)
 
 	if err != nil {
 		panic(err)
@@ -221,7 +221,7 @@ func renderText(
 
 	for _, s := range segments {
 		//indicesToRender += renderSegment(fontFace, s, hbFont, glyphView, glyphTex)
-		seg := CalculateSegment(ttf, s, hbFont)
+		seg := CalculateSegment(ttf, s, hbFont, 32)
 		indicesToRender += RenderSegment(&seg, fontFace, glyphView, glyphTex)
 	}
 

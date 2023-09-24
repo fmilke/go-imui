@@ -266,6 +266,7 @@ type Glyph struct {
 
 type Segment struct {
 	Glyphs []Glyph
+	Width float32
 }
 
 func LoadTTF(path string) (*truetype.Font, error) {
@@ -292,28 +293,33 @@ func CalculateSegment(
 	ttf *truetype.Font,
 	text string,
 	hbFont *harfbuzz.Font,
+	fontSize int,
 ) Segment {
 	buf := harfbuzz.NewBuffer()
 	rs := []rune(text)
 
 	buf.AddRunes(rs, 0, len(rs))
+	buf.Props.Direction = harfbuzz.LeftToRight
 	buf.Shape(hbFont, []harfbuzz.Feature{})
 
 	metric := GetDefaultMetric()
-	factor := float32(FontScaleFactor(ttf, metric, 14))
+	factor := float32(FontScaleFactor(ttf, metric, Sp(fontSize)))
 
+	fmt.Println("Font Scale Factor: ", factor)
 	var segment Segment
 
 	for i, g := range buf.Pos {
 		fmt.Printf("Calculating for glyph: %+v \n", g)
 
 		segment.Glyphs = append(segment.Glyphs, Glyph{
-			XAdvance: float32(g.XAdvance) * factor + 24.0,
+			XAdvance: float32(g.XAdvance) * factor,
 			YAdvance: float32(g.YAdvance) * factor,
 			XOffset: float32(g.XOffset),
 			YOffset: float32(g.YOffset),
 			R: rs[i],
 		})
+
+		segment.Width += float32(g.XAdvance)
 	}
 
 	return segment
