@@ -12,10 +12,8 @@ import (
 	"github.com/danielgatis/go-freetype/freetype"
 )
 
-
 const PT_PER_LOGICAL_INCH = 72.0
 const PIXELS_PER_LOGICAL_INCH = 96.0 // aka. DPI
-
 
 type GlyphTexture struct {
 	handle  uint32
@@ -27,12 +25,6 @@ type GlyphTexture struct {
 type GlyphView struct {
 	size int32
 	tex  *GlyphTexture
-}
-
-func NewGlyphTexture() {
-}
-
-func NewGlyphView() {
 }
 
 func appendRune(
@@ -210,52 +202,6 @@ func initTex(rn rune, face *freetype.Face) (*image.RGBA, *freetype.Metrics) {
 	return img, metrics
 }
 
-
-func CalculateSegments(
-	fontFace *freetype.Face,
-	glyphView GlyphView,
-	glyphTex *GlyphTexture,
-	s string,
-) int {
-
-	verticesPerRune := 6
-	componentPerVertex := 4
-	runeStride := componentPerVertex * verticesPerRune
-	co := make([]float32, len(s)*runeStride)
-
-	xadv := 0.0
-	coi := 0
-
-	indices := 0
-	cellSlotX := int32(0)
-	for _, r := range s {
-
-		if r == ' ' {
-			xadv += 24.0
-			fmt.Printf("Skipping space\n")
-			continue
-		}
-		rasterized, metrics := initTex(r, fontFace)
-
-		fmt.Printf("Rune: '%v': %v,%v\n", string(r), metrics.Width, metrics.Height)
-		glyphView.IntoCell(glyphTex, rasterized, cellSlotX, 0)
-
-		appendRune(float32(xadv), coi, &co, metrics)
-		coi += runeStride
-
-		xadv += float64(metrics.Width)
-		indices += verticesPerRune
-		cellSlotX++
-	}
-
-	fmt.Printf("co: %+v\n", co)
-
-	makeSegmentVaos(co)
-	CheckGLErrors()
-
-	return indices
-}
-
 type Glyph struct {
 	XAdvance float32
 	YAdvance float32
@@ -370,51 +316,6 @@ func RenderSegment(
 	CheckGLErrorsPrint("RenderSegment: makeSegmentVaos")
 
 	return glyphCount * VERTS_PER_GLYPH
-}
-
-func renderSegment(
-	fontFace *freetype.Face,
-	segment string,
-	hbFont *harfbuzz.Font,
-	glyphView GlyphView,
-	glyphTex *GlyphTexture,
-) int {
-	verticesPerRune := 6
-	componentPerVertex := 4
-	runeStride := componentPerVertex * verticesPerRune
-	indicesToRender := 0
-	// TODO: Reuse buffer?
-	
-	buf := harfbuzz.NewBuffer()
-	text := []rune(segment)
-	buf.AddRunes(text, 0, len(text))
-	cellSlotX := int32(0)
-	xadv := 0.0
-
-	co := make([]float32, len(segment)*runeStride)
-	buf.Shape(hbFont, []harfbuzz.Feature{})
-
-	//metric := GetDefaultMetric()
-	//factor := FontScaleFactor(ttf, metric, 14)
-
-	for i, g := range buf.Pos {
-		fmt.Printf("glyph: %v\n", g)
-		// TODO: Check for faster way to access rune
-		// TODO: Also this access does not respect unicode
-		r := rune(segment[i])
-		
-		rasterized, _ := initTex(r, fontFace)
-		glyphView.IntoCell(glyphTex, rasterized, cellSlotX, 0)
-
-		xadv += float64(g.XAdvance)
-		indicesToRender += verticesPerRune
-		cellSlotX++
-	}
-
-	makeSegmentVaos(co)
-	CheckGLErrors()
-
-	return indicesToRender
 }
 
 func FontScaleFactor(font *truetype.Font, m Metric, size Sp) float32 {

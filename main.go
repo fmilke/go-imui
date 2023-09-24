@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math"
-	"os"
 	"runtime"
 	"strings"
 
@@ -34,8 +33,6 @@ func main() {
 	}
 
 	defer glfw.Terminate()
-
-	getBuffer()
 
 	app := createApp()
 	app.Init(WIN_WIDTH, WIN_HEIGHT, WIN_NAME)
@@ -96,26 +93,12 @@ func (a *App) Loop(
 
 	fmt.Println("======")
 	indices := renderText(
-		"Someetext",
+		"Sometext",
 		ttf,
 		hbFont,
 		a.fontFace,
 		a.glyphView,
 		a.glyphTex,
-	)
-	for !a.window.ShouldClose() {
-		draw(1, a.window, a.program, a.glyphTex, int32(indices))
-	}
-}
-
-func (a *App) Loop2() {
-
-	indices := CalculateSegments(
-		a.fontFace,
-		a.glyphView,
-		a.glyphTex,
-//		"This is text",
-"a",
 	)
 	for !a.window.ShouldClose() {
 		draw(1, a.window, a.program, a.glyphTex, int32(indices))
@@ -132,41 +115,6 @@ type GlyphInfo struct {
 	XAdvance int
 }
 
-func getBuffer() {
-
-	fs, err := findfont.Find("Arial", findfont.FontRegular)
-
-	if err != nil {
-		panic(err)
-	}
-
-	f := fs[0][2]
-
-	file, err := os.Open(f)
-
-	if err != nil {
-		panic(err)
-	}
-
-	font, err := truetype.Parse(file)
-
-	if err != nil {
-		panic(err)
-	}
-
-	buf := harfbuzz.NewBuffer()
-	s := "This is harfbuzz"
-	text := []rune(s)
-	buf.AddRunes(text, 0, len(text))
-
-	hbFont := HBFont(font)
-	buf.Shape(hbFont, []harfbuzz.Feature{})
-
-	for _, g := range buf.Pos {
-		fmt.Printf("glyph: %v\n", g)
-	}
-}
-
 func GetSomeFont() string {
 	fs, err := findfont.Find("Noto Sans", findfont.FontRegular)
 
@@ -176,32 +124,6 @@ func GetSomeFont() string {
 
 	path := fs[0][2]
 	return path
-}
-
-func getHbFont() *harfbuzz.Font {
-	fs, err := findfont.Find("Arial", findfont.FontRegular)
-
-	if err != nil {
-		panic(err)
-	}
-
-	f := fs[0][2]
-
-	file, err := os.Open(f)
-	
-	if err != nil {
-		panic(err)
-	}
-
-	font, err := truetype.Parse(file)
-
-	if err != nil {
-		panic(err)
-	}
-
-	hbFont := HBFont(font)
-
-	return hbFont
 }
 
 func renderText(
@@ -220,7 +142,6 @@ func renderText(
 	segments :=	strings.Fields(text)
 
 	for _, s := range segments {
-		//indicesToRender += renderSegment(fontFace, s, hbFont, glyphView, glyphTex)
 		seg := CalculateSegment(ttf, s, hbFont, 32)
 		indicesToRender += RenderSegment(&seg, fontFace, glyphView, glyphTex)
 	}
