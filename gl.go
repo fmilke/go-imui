@@ -19,19 +19,43 @@ const (
 	in vec2 a_uv;
 
 	out vec2 uv;
+	out vec3 bc; // barycentric coordinates
+
+	const vec3 bcs[3] = vec3[3](
+		vec3(1.0, 0.0, 0.0),
+		vec3(0.0, 1.0, 0.0),
+		vec3(0.0, 0.0, 1.0)
+	);
+
     void main() {
 		vec2 pos_normalized = vec2(a_pos.x - .5, .5 - a_pos.y)* 2.0;
 		gl_Position = vec4(pos_normalized, .0, 1.0);
 		uv = vec2(a_uv.x, a_uv.y);
+
+		// Add barycentric 
+		bc = bcs[gl_VertexID % 3];
     }
 ` + "\x00"
 
 	fragmentShaderSource = `#version 410
 	in vec2 uv;
+	in vec3 bc; // barycentric coordinates
+
 	uniform sampler2D glyphTexture;
+
     out vec4 clr;
     void main() {
-        clr = vec4(texture(glyphTexture, uv));
+
+		float b = 16.0 * bc[0] * bc[1] * bc[2];
+		if (b < .2) {
+			b = 1.0;
+		} else {
+			b = 0.0;
+		}
+		vec4 wire_frame = vec4(1.0, .0, .0, 1.0) * b;
+        vec4 frag_clr = vec4(texture(glyphTexture, uv));
+
+		clr = wire_frame * .003 + frag_clr;
     }
 ` + "\x00"
 )

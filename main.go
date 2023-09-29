@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"runtime"
 	"strings"
 
@@ -24,14 +23,12 @@ func init() {
 }
 
 func main() {
-	testConversions()
 
 	err := glfw.Init()
 
 	if err != nil {
 		panic(err)
 	}
-
 	defer glfw.Terminate()
 
 	app := createApp()
@@ -70,7 +67,9 @@ func (a *App) Init(width int, height int, name string) {
 
 	a.window = window
 
+	fmt.Println("Asd")
 	a.program = initOpenGL()
+	fmt.Println("Asd")
 	CheckGLErrorsPrint("Pre tex")
 
 	glTex := newGlyphTexture(1024)
@@ -100,6 +99,7 @@ func (a *App) Loop(
 		a.glyphView,
 		a.glyphTex,
 	)
+
 	for !a.window.ShouldClose() {
 		draw(1, a.window, a.program, a.glyphTex, int32(indices))
 	}

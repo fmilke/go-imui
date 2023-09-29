@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"image"
-	"io/ioutil"
 
 	"github.com/danielgatis/go-findfont/findfont"
 	"github.com/benoitkugler/textlayout/harfbuzz"
@@ -143,7 +142,7 @@ func initFace(px float32) *freetype.Face {
 		panic(err)
 	}
 
-	data, err := ioutil.ReadFile(fonts[0][2])
+	data, err := os.ReadFile(fonts[0][2])
 
 	if err != nil {
 		panic(err)
@@ -325,3 +324,7 @@ func FontScaleFactor(font *truetype.Font, m Metric, size Sp) float32 {
 	factor := float32(sizePx) / float32(upem)
 	return factor
 }
+
+//func RenderGlyphTexture() {}
+
+
