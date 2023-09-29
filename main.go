@@ -149,16 +149,3 @@ func renderText(
 	return indicesToRender
 }
 
-
-func testConversions() {
-
-	r := math.Abs(float64(pxToPt(16)) - (12))
-	if r > 0.0001 {
-		fmt.Printf("pxToPt is off\n: %v", r)
-	}
-
-	r2 := math.Abs(float64(ptToPx(12)) - (16))
-	if r2 > 0.0001 {
-		fmt.Printf("ptToPx is off: %v\n", r2)
-	}
-}
