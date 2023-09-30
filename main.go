@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"runtime"
-	"strings"
 
 	"github.com/benoitkugler/textlayout/fonts/truetype"
 	"github.com/benoitkugler/textlayout/harfbuzz"
@@ -36,6 +35,10 @@ func main() {
 
 	path := GetSomeFont()
 	ttf, err := LoadTTF(path)
+
+	if err != nil {
+		panic(err)
+	}
 	hbFont := HBFont(ttf)
 
 	app.Loop(ttf, hbFont)
@@ -91,7 +94,7 @@ func (a *App) Loop(
 ) {
 
 	fmt.Println("======")
-	indices := renderText(
+	indices := RenderText(
 		"Sometext",
 		ttf,
 		hbFont,
@@ -125,7 +128,7 @@ func GetSomeFont() string {
 	path := fs[0][2]
 	return path
 }
-
+/*
 func renderText(
 	text string,
 	ttf *truetype.Font,
@@ -149,3 +152,4 @@ func renderText(
 	return indicesToRender
 }
 
+*/

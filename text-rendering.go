@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"image"
+	"unicode"
 
 	"github.com/danielgatis/go-findfont/findfont"
 	"github.com/benoitkugler/textlayout/harfbuzz"
@@ -28,9 +29,11 @@ type GlyphView struct {
 
 func appendRune(
 	xAdv float32,
+	yOffset float32,
 	i int,
 	verts *[]float32,
 	metrics *freetype.Metrics,
+	offset int,
 ) {
 	px_x := 1.0 / float32(WIN_WIDTH)
 	px_y := 1.0 / float32(WIN_HEIGHT)
@@ -40,16 +43,18 @@ func appendRune(
 
 	char_hbear_y := float32(metrics.HorizontalBearingY)
 
+	// TODO: properly calculate baseline
 	fixed_offset := float32(30.0)
 
 	x := xAdv * px_x
-	y := (fixed_offset-char_hbear_y) * px_y
+	y := (fixed_offset-char_hbear_y + yOffset) * px_y
 
 	w := char_width * px_x
 	h := char_height * px_y
 
-	fmt.Printf("x: %v,y: %v, w: %v, h: %v\n", x, y, w, h)
+	//fmt.Printf("x: %v,y: %v, w: %v, h: %v\n", x, y, w, h)
 
+	// TODO: Properly get uvs from texture placement
 	cellWidth := float32(1024 / 32)
 	cellHeight := float32(1024 / 32)
 
@@ -61,11 +66,13 @@ func appendRune(
 	uWidth := 1.0/cellWidth * widthRatio
 	vWidth := 1.0/cellHeight * heightRatio
 
-	fmt.Printf("segment data: uv: ux: %v, uy %v, uw: %v, uh: %v\n", uOffset, vOffset, uWidth, vWidth)
+	// fmt.Printf("segment data: uv: ux: %v, uy %v, uw: %v, uh: %v\n", uOffset, vOffset, uWidth, vWidth)
+
+	fmt.Printf("Inserting Quad: offset: %d, i: %d\n", offset, i)
 
 	insertQuad(
 		verts,
-		i,
+		i + offset,
 		x,
 		y,
 		w,
@@ -133,6 +140,37 @@ func insertQuad(
 
 	(*verts)[i+22] = u_max
 	(*verts)[i+23] = v_max
+}
+
+func GetFace(path string, px float32) (*freetype.Face, error) {
+	data, err := os.ReadFile(path)
+
+	if err != nil {
+		return nil, err
+	}
+
+	lib, err := freetype.NewLibrary()
+	if err != nil {
+		return nil, err
+	}
+
+	face, err := freetype.NewFace(lib, data, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	pt := int(pxToPt(px))
+
+	if LOG_FONT {
+		fmt.Printf("Retrieving font face of size %vpt\n", pt)
+	}
+
+	err = face.Pt(pt, int(PIXELS_PER_LOGICAL_INCH))
+	if err != nil {
+		return nil, err
+	}
+
+	return face, nil
 }
 
 func initFace(px float32) *freetype.Face {
@@ -234,6 +272,32 @@ func LoadTTF(path string) (*truetype.Font, error) {
 	return font, err
 }
 
+func SplitIntoSegments(text string) []string {
+
+	var segs []string
+
+	withinWhitespaceRun := true
+	start := 0
+
+	for i, r := range text {
+		if unicode.IsSpace(r) {
+			if !withinWhitespaceRun {
+				segs = append(segs, text[start:i])
+				withinWhitespaceRun = true
+			}
+		} else if withinWhitespaceRun {
+			withinWhitespaceRun = false
+			start = i
+		}
+	}
+
+	if !withinWhitespaceRun {
+		segs = append(segs, text[start:])
+	}
+
+	return segs
+}
+
 func CalculateSegment(
 	ttf *truetype.Font,
 	text string,
@@ -274,23 +338,29 @@ const VERTS_PER_GLYPH = 6
 const COMPS_PER_VERT = 4
 const COMPS_PER_GLYPH = VERTS_PER_GLYPH * COMPS_PER_VERT
 
-func RenderSegment(
-	segment *Segment,
+func CopyGlyphDataIntoVertexBuffer(
+	placement *PlacedSegment,
 	fontFace *freetype.Face,
 	glyphView GlyphView,
 	glyphTex *GlyphTexture,
+	offset int,
+	vertices []float32,
 ) int {
+
+	segment := placement.Segment
+
 	glyphCount := len(segment.Glyphs)
-	vertices := make([]float32, glyphCount*COMPS_PER_GLYPH)
 
 	cellSlotX := int32(0)
-	xadv := float32(0.0)
+	xadv := placement.XOffset
 	coi := 0
 
 	for _, g := range segment.Glyphs {
 
 		if g.R == ' ' {
-			xadv += 24.0
+			// TODO: Is this generalizable? What is the actual
+			// error to catch here?
+			fmt.Println("Whitespace found in segment. This should never happen")
 			continue
 		}
 
@@ -301,7 +371,7 @@ func RenderSegment(
 		glyphView.IntoCell(glyphTex, rasterized, cellSlotX, 0)
 
 		// Write vertex buffer
-		appendRune(xadv, coi, &vertices, metrics)
+		appendRune(xadv, placement.YOffset, coi, &vertices, metrics, offset)
 
 		fmt.Printf("xadv: %v\n", xadv)
 
@@ -310,9 +380,6 @@ func RenderSegment(
 
 		cellSlotX++
 	}
- 
-	makeSegmentVaos(vertices)
-	CheckGLErrorsPrint("RenderSegment: makeSegmentVaos")
 
 	return glyphCount * VERTS_PER_GLYPH
 }
@@ -325,6 +392,99 @@ func FontScaleFactor(font *truetype.Font, m Metric, size Sp) float32 {
 	return factor
 }
 
-//func RenderGlyphTexture() {}
+func PlaceSegments (
+	text string,
+	ttf *truetype.Font,
+	hbFont *harfbuzz.Font,
+	fontFace *freetype.Face,
+	allowedWidth float32,
+	lineHeight float32,
+) RenderTextResult {
+	indicesToRender := 0
+	whiteSpacesWidth := float32(32.0)
 
+	segs := SplitIntoSegments(text)
+
+	var currentWidth float32
+
+	// TODO: Handle case where text is empty and we have no line at all
+	var totalHeight = lineHeight
+	var totalWidth float32
+	var placedSegs []PlacedSegment
+	var yOffset float32
+	yOffset -= lineHeight
+
+	for _, seg := range segs {
+		run := CalculateSegment(ttf, seg, hbFont, 32)
+
+		var xOffset float32
+
+		breakLine := currentWidth + run.Width + whiteSpacesWidth > allowedWidth
+
+		if breakLine {
+			currentWidth = run.Width
+			totalHeight += lineHeight
+			totalWidth = allowedWidth
+			xOffset = 0.0
+			yOffset += lineHeight
+		} else {
+			xOffset = 1.0
+		}
+
+		placed := PlacedSegment {
+			Segment: run,
+			XOffset: xOffset,
+			YOffset: yOffset,
+		}
+
+		indicesToRender += len(run.Glyphs)
+		placedSegs = append(placedSegs, placed)
+	}
+
+	return RenderTextResult {
+		Width: totalWidth,
+		Height: totalHeight,
+		Indices: indicesToRender,
+		PlacedSegments: placedSegs,
+	}
+}
+
+type PlacedSegment struct {
+	Segment Segment
+	XOffset float32
+	YOffset float32
+}
+
+type RenderTextResult struct {
+	Height float32
+	Width float32
+	Indices int
+	PlacedSegments []PlacedSegment
+}
+
+func RenderText(
+	text string,
+	ttf *truetype.Font,
+	hbFont *harfbuzz.Font,
+	fontFace *freetype.Face,
+	glyphView GlyphView,
+	glyphTex *GlyphTexture,
+) int {
+	indicesToRender := 0
+	offset := 0
+
+	placement := PlaceSegments("Please place multiple", ttf, hbFont, fontFace, 640.0, 32.0)
+	vertices := make([]float32, placement.Indices*COMPS_PER_GLYPH)
+	fmt.Println("Indices: %d; VertexBuffer size: %d", placement.Indices)
+
+	for _, p := range placement.PlacedSegments {
+		indicesToRender = CopyGlyphDataIntoVertexBuffer(&p, fontFace, glyphView, glyphTex, offset, vertices)
+		offset += len(p.Segment.Glyphs) * COMPS_PER_GLYPH
+	}
+
+	makeSegmentVaos(vertices)
+	CheckGLErrorsPrint("RenderSegment: makeSegmentVaos")
+
+	return indicesToRender
+}
 

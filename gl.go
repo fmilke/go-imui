@@ -12,6 +12,32 @@ import (
 
 const GL_S_FLOAT = 4
 
+// texture dump shaders
+const (
+	texDumpVSSource = `#version 410
+
+	out vec2 uv;
+	out vec2 pos;
+
+	void main() {
+	}
+
+	` + "\x00"
+
+	texDumpFSSource = `#version 410
+
+	in vec2 uv;
+	in vec2 pos;
+
+	uniform sampler2D tex;
+
+	out vec4 clr;
+	void main() {
+        vec4 clr = texture(tex, uv);
+	}
+	` + "\x00"
+)
+
 const (
 	vertexShaderSource = `#version 410
 
@@ -55,7 +81,7 @@ const (
 		vec4 wire_frame = vec4(1.0, .0, .0, 1.0) * b;
         vec4 frag_clr = vec4(texture(glyphTexture, uv));
 
-		clr = wire_frame * .003 + frag_clr;
+		clr = wire_frame * .5 + frag_clr;
     }
 ` + "\x00"
 )
@@ -166,6 +192,9 @@ func compileShader(source string, shaderType uint32) (uint32, error) {
 	}
 
 	return shader, nil
+}
+
+func RenderGlyphTexture() {
 }
 
 func (c *GlyphView) IntoCell(
