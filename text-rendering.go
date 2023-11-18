@@ -2,18 +2,24 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"image"
+	"os"
 	"unicode"
 
-	"github.com/danielgatis/go-findfont/findfont"
-	"github.com/benoitkugler/textlayout/harfbuzz"
 	"github.com/benoitkugler/textlayout/fonts/truetype"
+	"github.com/benoitkugler/textlayout/harfbuzz"
+	"github.com/danielgatis/go-findfont/findfont"
 	"github.com/danielgatis/go-freetype/freetype"
 )
 
 const PT_PER_LOGICAL_INCH = 72.0
 const PIXELS_PER_LOGICAL_INCH = 96.0 // aka. DPI
+
+const DEBUG_GLYPH_PLACEMENT = true;
+
+const DEB_UV = 2;
+const DEB_POS = 1;
+const DEBUG_GLYPH_COMPONENTS = DEB_UV;
 
 type GlyphTexture struct {
 	handle  uint32
@@ -52,8 +58,6 @@ func appendRune(
 	w := char_width * px_x
 	h := char_height * px_y
 
-	//fmt.Printf("x: %v,y: %v, w: %v, h: %v\n", x, y, w, h)
-
 	// TODO: Properly get uvs from texture placement
 	cellWidth := float32(1024 / 32)
 	cellHeight := float32(1024 / 32)
@@ -61,16 +65,29 @@ func appendRune(
 	widthRatio := float32(metrics.Width) / cellWidth
 	heightRatio := float32(metrics.Height) / cellHeight
 
-	uOffset := float32(i)/24.0*float32(32.0/1024.0)
-	vOffset := float32(0.0)
-	uWidth := 1.0/cellWidth * widthRatio
-	vWidth := 1.0/cellHeight * heightRatio
+	// TODO: Properly calculate cell coordinates
+	cx := float32(int(float32(cid)) % 32.0)
+	cy := float32(int(float32(cid)) / 32.0)
 
-	// fmt.Printf("segment data: uv: ux: %v, uy %v, uw: %v, uh: %v\n", uOffset, vOffset, uWidth, vWidth)
+	uSize := 1.0/cellWidth * widthRatio
+	vSize := 1.0/cellHeight * heightRatio
 
-	fmt.Printf("Inserting Quad: offset: %d, i: %d\n", offset, i)
+	uOffset := float32(cx)*float32(32.0/1024.0)
+	vOffset := 1.0 - float32(cy)*float32(32.0/1024.0) - vSize
 
-	insertQuad(
+	if DEBUG_GLYPH_PLACEMENT {
+		fmt.Printf("Inserting Quad: offset: %d, i: %d\n", offset, i)
+	}
+
+	if DEBUG_GLYPH_COMPONENTS > 0 {
+		if DEBUG_GLYPH_COMPONENTS & DEB_UV > 0 {
+			fmt.Printf("uvOffset: %f, %f, ; uvSize: %f %f ", uOffset, vOffset, uSize, vSize)
+		}
+
+		fmt.Println()
+	}
+
+	insertGlyphComponents(
 		verts,
 		i + offset,
 		x,
@@ -79,12 +96,12 @@ func appendRune(
 		h,
 		uOffset,
 		vOffset,
-		uWidth,
-		vWidth,
+		uSize,
+		vSize,
 	)
 }
 
-func insertQuad(
+func insertGlyphComponents(
 	verts *[]float32,
 	i int,
 	x float32,
@@ -318,8 +335,6 @@ func CalculateSegment(
 	var segment Segment
 
 	for i, g := range buf.Pos {
-		fmt.Printf("Calculating for glyph: %+v \n", g)
-
 		segment.Glyphs = append(segment.Glyphs, Glyph{
 			XAdvance: float32(g.XAdvance) * factor,
 			YAdvance: float32(g.YAdvance) * factor,
@@ -337,6 +352,8 @@ func CalculateSegment(
 const VERTS_PER_GLYPH = 6
 const COMPS_PER_VERT = 4
 const COMPS_PER_GLYPH = VERTS_PER_GLYPH * COMPS_PER_VERT
+
+var cid = 0
 
 func CopyGlyphDataIntoVertexBuffer(
 	placement *PlacedSegment,
@@ -368,12 +385,17 @@ func CopyGlyphDataIntoVertexBuffer(
 		rasterized, metrics := initTex(g.R, fontFace)
 
 		// Copy into texture
-		glyphView.IntoCell(glyphTex, rasterized, cellSlotX, 0)
+		x := int32(cid % 32)
+		y := int32(cid / 32)
+		glyphView.IntoCell(glyphTex, rasterized, x, y)
 
 		// Write vertex buffer
 		appendRune(xadv, placement.YOffset, coi, &vertices, metrics, offset)
+		cid++
 
-		fmt.Printf("xadv: %v\n", xadv)
+		if DEBUG_GLYPH_PLACEMENT {
+			fmt.Printf("Rune: %v, xadv: %v\n", string(g.R), xadv)
+		}
 
 		xadv += g.XAdvance
 		coi += COMPS_PER_GLYPH
@@ -411,25 +433,36 @@ func PlaceSegments (
 	var totalHeight = lineHeight
 	var totalWidth float32
 	var placedSegs []PlacedSegment
-	var yOffset float32
-	yOffset -= lineHeight
+	var yOffset float32 = lineHeight * 2.0
+	var xOffset float32
 
 	for _, seg := range segs {
+
+		fmt.Printf("Start for next segment: %v, %v\n", xOffset, yOffset)
+
 		run := CalculateSegment(ttf, seg, hbFont, 32)
 
-		var xOffset float32
-
 		breakLine := currentWidth + run.Width + whiteSpacesWidth > allowedWidth
+
+		fmt.Printf("Breaking: %v\n", breakLine)
+
+		if false {
 
 		if breakLine {
 			currentWidth = run.Width
 			totalHeight += lineHeight
-			totalWidth = allowedWidth
+			totalWidth = max(run.Width, totalWidth)
 			xOffset = 0.0
 			yOffset += lineHeight
 		} else {
-			xOffset = 1.0
+			spaceWidth := float32(1.0)
+			currentWidth += run.Width + spaceWidth
+			totalWidth += run.Width + spaceWidth
+			xOffset += spaceWidth
 		}
+	}
+
+		yOffset += lineHeight
 
 		placed := PlacedSegment {
 			Segment: run,
@@ -473,13 +506,16 @@ func RenderText(
 	indicesToRender := 0
 	offset := 0
 
-	placement := PlaceSegments("Please place multiple", ttf, hbFont, fontFace, 640.0, 32.0)
+	placement := PlaceSegments(text, ttf, hbFont, fontFace, 640.0, 32.0)
 	vertices := make([]float32, placement.Indices*COMPS_PER_GLYPH)
-	fmt.Println("Indices: %d; VertexBuffer size: %d", placement.Indices)
 
 	for _, p := range placement.PlacedSegments {
-		indicesToRender = CopyGlyphDataIntoVertexBuffer(&p, fontFace, glyphView, glyphTex, offset, vertices)
+		indicesToRender += CopyGlyphDataIntoVertexBuffer(&p, fontFace, glyphView, glyphTex, offset, vertices)
+		fmt.Printf("Offset in vao: %v\n", offset)
 		offset += len(p.Segment.Glyphs) * COMPS_PER_GLYPH
+
+		fmt.Println("-----")
+		//fmt.Printf("%v\n", vertices)
 	}
 
 	makeSegmentVaos(vertices)

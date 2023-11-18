@@ -70,9 +70,7 @@ func (a *App) Init(width int, height int, name string) {
 
 	a.window = window
 
-	fmt.Println("Asd")
 	a.program = initOpenGL()
-	fmt.Println("Asd")
 	CheckGLErrorsPrint("Pre tex")
 
 	glTex := newGlyphTexture(1024)
@@ -95,7 +93,7 @@ func (a *App) Loop(
 
 	fmt.Println("======")
 	indices := RenderText(
-		"Sometext",
+		"Firstverylongline1 Firstverylongline2",
 		ttf,
 		hbFont,
 		a.fontFace,
@@ -128,28 +126,3 @@ func GetSomeFont() string {
 	path := fs[0][2]
 	return path
 }
-/*
-func renderText(
-	text string,
-	ttf *truetype.Font,
-	hbFont *harfbuzz.Font,
-	fontFace *freetype.Face,
-	glyphView GlyphView,
-	glyphTex *GlyphTexture,
-) int {
-	// TODO: Check if pointer into string based
-	// solution is more efficient
-
-	indicesToRender := 0
-
-	segments :=	strings.Fields(text)
-
-	for _, s := range segments {
-		seg := CalculateSegment(ttf, s, hbFont, 32)
-		indicesToRender += RenderSegment(&seg, fontFace, glyphView, glyphTex)
-	}
-
-	return indicesToRender
-}
-
-*/

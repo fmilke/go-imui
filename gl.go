@@ -194,9 +194,6 @@ func compileShader(source string, shaderType uint32) (uint32, error) {
 	return shader, nil
 }
 
-func RenderGlyphTexture() {
-}
-
 func (c *GlyphView) IntoCell(
 	t *GlyphTexture,
 	i *image.RGBA,
@@ -210,21 +207,22 @@ func (c *GlyphView) IntoCell(
 	cw := t.width / c.size
 	ch := t.height / c.size
 
-	// fmt.Printf("csize, cx,cy,x,y,w,h: %v %v,%v,%v, %v, %v, %v\n", c.size, cx, cy, cx*cw,
-	// 	cy*ch,
-	// 	iw,
-	// 	ih)
-
 	gl.BindTexture(t.target, t.handle)
 	CheckGLErrorsPrint("BindTexture")
+
+	w := int32(iw)
+	h := int32(ih)
+
+	x := cx*cw 
+	y := t.height - cy*ch - h
 
 	gl.TexSubImage2D(
 		t.target,
 		0,
-		cx*cw,
-		cy*ch,
-		int32(iw),
-		int32(ih),
+		x,
+		y,
+		w,
+		h,
 		gl.RGBA,
 		gl.UNSIGNED_BYTE,
 		gl.Ptr(i.Pix),
