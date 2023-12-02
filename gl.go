@@ -4,6 +4,7 @@ import (
 	"strings"
 	"fmt"
 	"image"
+	imageDraw "image/draw"
 	"log"
 	"unsafe"
 	"github.com/go-gl/gl/v4.1-core/gl"
@@ -86,6 +87,13 @@ const (
 ` + "\x00"
 )
 
+type GlyphTexture struct {
+	handle  uint32
+	target  uint32
+	width   int32
+	height  int32
+}
+
 func cString(len int) string {
 	return strings.Repeat("\x00", len+1)
 }
@@ -96,6 +104,8 @@ func initOpenGL() uint32 {
 	}
 
 	var data [4]uint8
+
+	gl.Enable(gl.DEBUG_OUTPUT)
 
 	gl.DebugMessageCallback(func(source uint32,
 		gltype uint32,
@@ -130,7 +140,6 @@ func initOpenGL() uint32 {
 	return prog
 }
 
-
 func draw(
 	vao uint32,
 	window *glfw.Window,
@@ -149,7 +158,6 @@ func draw(
 	glfw.PollEvents()
 	window.SwapBuffers()
 }
-
 
 func makeSegmentVaos(vertices []float32) (uint32, uint32) {
 	var buffer uint32
@@ -201,6 +209,10 @@ func (c *GlyphView) IntoCell(
 	cy int32,
 ) {
 
+	if USE_DEBUG_UV {
+		return
+	}
+
 	iw := int32(i.Rect.Size().X)
 	ih := int32(i.Rect.Size().Y)
 
@@ -230,20 +242,21 @@ func (c *GlyphView) IntoCell(
 	CheckGLErrorsPrint("TexSubImage2D")
 }
 
+const GL_TEXTURE_2D = uint32(gl.TEXTURE_2D)
+const NULL_TEX_HANDLE uint32 = 0
+
 func newGlyphTexture(size int32) *GlyphTexture {
 	var handle uint32
 	gl.GenTextures(1, &handle)
 
-	target := uint32(gl.TEXTURE_2D)
-
 	texture := GlyphTexture{
 		handle: handle,
-		target: target,
+		target: GL_TEXTURE_2D,
 		width:  size,
 		height: size,
 	}
 
-	gl.BindTexture(target, handle)
+	gl.BindTexture(GL_TEXTURE_2D, handle)
 
 	gl.TexParameteri(texture.target, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE)
 	gl.TexParameteri(texture.target, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
@@ -251,7 +264,7 @@ func newGlyphTexture(size int32) *GlyphTexture {
 	gl.TexParameteri(texture.target, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
 
 	gl.TexStorage2D(
-		target,
+		GL_TEXTURE_2D,
 		1,
 		gl.SRGB8_ALPHA8,
 		size,
@@ -260,7 +273,32 @@ func newGlyphTexture(size int32) *GlyphTexture {
 
 	CheckGLErrorsPrint("TexStorage2D")
 
+	gl.BindTexture(GL_TEXTURE_2D,  NULL_TEX_HANDLE)
+
 	return &texture
+}
+
+func replaceGlpyhTexture(tex *GlyphTexture, img image.Image) {
+	r := img.Bounds()
+	rgba := image.NewRGBA(r)
+	imageDraw.Draw(rgba, r, img, r.Min, imageDraw.Src)
+	data := gl.Ptr(rgba.Pix)
+
+	gl.BindTexture(GL_TEXTURE_2D, tex.handle)
+
+	gl.TexSubImage2D(
+		GL_TEXTURE_2D,
+		0,
+		int32(r.Min.X),
+		int32(r.Min.Y),
+		int32(r.Max.X),
+		int32(r.Max.Y),
+		gl.RGBA,
+		gl.UNSIGNED_BYTE,
+		data,
+	)
+
+	gl.BindTexture(GL_TEXTURE_2D, NULL_TEX_HANDLE)
 }
 
 func CheckGLErrors() {

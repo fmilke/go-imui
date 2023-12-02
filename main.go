@@ -15,7 +15,8 @@ const WIN_WIDTH = 640
 const WIN_HEIGHT = 480
 const WIN_NAME = "Testing"
 
-const LOG_FONT = true
+const LOG_FONT = false
+const USE_DEBUG_UV = false;
 
 func init() {
 	runtime.LockOSThread()
@@ -71,9 +72,18 @@ func (a *App) Init(width int, height int, name string) {
 	a.window = window
 
 	a.program = initOpenGL()
-	CheckGLErrorsPrint("Pre tex")
 
 	glTex := newGlyphTexture(1024)
+	
+	if USE_DEBUG_UV {
+		png, err := loadPng("./assets/checkered-uvs.png");
+		if err == nil {
+			replaceGlpyhTexture(glTex, png)
+		} else {
+			fmt.Println("Could not load test uv", err)
+		}
+	}
+
 	face := initFace(32)
 
 	view := GlyphView{

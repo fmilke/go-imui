@@ -15,31 +15,27 @@ import (
 const PT_PER_LOGICAL_INCH = 72.0
 const PIXELS_PER_LOGICAL_INCH = 96.0 // aka. DPI
 
-const DEBUG_GLYPH_PLACEMENT = true;
+const DEBUG_GLYPH_PLACEMENT = false;
 
 const DEB_UV = 2;
 const DEB_POS = 1;
-const DEBUG_GLYPH_COMPONENTS = DEB_UV;
+const DEBUG_GLYPH_COMPONENTS = 0;
 
-type GlyphTexture struct {
-	handle  uint32
-	target  uint32
-	width   int32
-	height  int32
+type Quad struct {
+	X float32
+	Y float32
+	W float32
+	H float32
 }
 
-type GlyphView struct {
-	size int32
-	tex  *GlyphTexture
-}
-
-func appendRune(
+func insertGlyph(
 	xAdv float32,
 	yOffset float32,
 	i int,
 	verts *[]float32,
 	metrics *freetype.Metrics,
 	offset int,
+	loc Quad,
 ) {
 	px_x := 1.0 / float32(WIN_WIDTH)
 	px_y := 1.0 / float32(WIN_HEIGHT)
@@ -58,30 +54,13 @@ func appendRune(
 	w := char_width * px_x
 	h := char_height * px_y
 
-	// TODO: Properly get uvs from texture placement
-	cellWidth := float32(1024 / 32)
-	cellHeight := float32(1024 / 32)
-
-	widthRatio := float32(metrics.Width) / cellWidth
-	heightRatio := float32(metrics.Height) / cellHeight
-
-	// TODO: Properly calculate cell coordinates
-	cx := float32(int(float32(cid)) % 32.0)
-	cy := float32(int(float32(cid)) / 32.0)
-
-	uSize := 1.0/cellWidth * widthRatio
-	vSize := 1.0/cellHeight * heightRatio
-
-	uOffset := float32(cx)*float32(32.0/1024.0)
-	vOffset := 1.0 - float32(cy)*float32(32.0/1024.0) - vSize
-
 	if DEBUG_GLYPH_PLACEMENT {
 		fmt.Printf("Inserting Quad: offset: %d, i: %d\n", offset, i)
 	}
 
 	if DEBUG_GLYPH_COMPONENTS > 0 {
 		if DEBUG_GLYPH_COMPONENTS & DEB_UV > 0 {
-			fmt.Printf("uvOffset: %f, %f, ; uvSize: %f %f ", uOffset, vOffset, uSize, vSize)
+			fmt.Printf("Location In GlpyhTex: %v\n", loc)
 		}
 
 		fmt.Println()
@@ -94,10 +73,7 @@ func appendRune(
 		y,
 		w,
 		h,
-		uOffset,
-		vOffset,
-		uSize,
-		vSize,
+		loc,
 	)
 }
 
@@ -108,11 +84,13 @@ func insertGlyphComponents(
 	y float32,
 	w float32,
 	h float32,
-	u float32,
-	v float32,
-	uw float32,
-	vh float32,
+	loc Quad,
 ) {
+
+	u := loc.X
+	v := loc.Y
+	uw := loc.W
+	vh := loc.W
 
 	u_min := u
 	v_min := v
@@ -390,7 +368,30 @@ func CopyGlyphDataIntoVertexBuffer(
 		glyphView.IntoCell(glyphTex, rasterized, x, y)
 
 		// Write vertex buffer
-		appendRune(xadv, placement.YOffset, coi, &vertices, metrics, offset)
+		// TODO: Properly get uvs from texture placement
+		cellWidth := float32(1024 / 32)
+		cellHeight := float32(1024 / 32)
+	
+		widthRatio := float32(metrics.Width) / cellWidth
+		heightRatio := float32(metrics.Height) / cellHeight
+
+		cx := float32(int(float32(cid)) % 32.0)
+		cy := float32(int(float32(cid)) / 32.0)
+	
+		uSize := 1.0/cellWidth * widthRatio
+		vSize := 1.0/cellHeight * heightRatio
+	
+		uOffset := float32(cx)*float32(32.0/1024.0)
+		vOffset := 1.0 - float32(cy)*float32(32.0/1024.0) - vSize
+
+		loc := Quad {
+			X: uOffset,
+			Y: vOffset,
+			W: uSize,
+			H: vSize,
+		}
+
+		insertGlyph(xadv, placement.YOffset, coi, &vertices, metrics, offset, loc)
 		cid++
 
 		if DEBUG_GLYPH_PLACEMENT {
