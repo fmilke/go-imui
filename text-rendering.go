@@ -309,7 +309,6 @@ func CalculateSegment(
 	metric := GetDefaultMetric()
 	factor := float32(FontScaleFactor(ttf, metric, Sp(fontSize)))
 
-	fmt.Println("Font Scale Factor: ", factor)
 	var segment Segment
 
 	for i, g := range buf.Pos {
@@ -321,7 +320,7 @@ func CalculateSegment(
 			R: rs[i],
 		})
 
-		segment.Width += float32(g.XAdvance)
+		segment.Width += float32(g.XAdvance) * factor
 	}
 
 	return segment
@@ -428,42 +427,35 @@ func PlaceSegments (
 
 	segs := SplitIntoSegments(text)
 
-	var currentWidth float32
+	var currentWidth float32 = - whiteSpacesWidth
 
 	// TODO: Handle case where text is empty and we have no line at all
 	var totalHeight = lineHeight
 	var totalWidth float32
 	var placedSegs []PlacedSegment
 	var yOffset float32 = lineHeight * 2.0
-	var xOffset float32
+	var xOffset float32 = 0
 
 	for _, seg := range segs {
-
-		fmt.Printf("Start for next segment: %v, %v\n", xOffset, yOffset)
 
 		run := CalculateSegment(ttf, seg, hbFont, 32)
 
 		breakLine := currentWidth + run.Width + whiteSpacesWidth > allowedWidth
-
-		fmt.Printf("Breaking: %v\n", breakLine)
-
-		if false {
+		//fmt.Printf("Segs: '%s', CurrentWidth: %v, RunWidth: %v, WhiteSpacesWidth: %v, AllowedWidth: %v, Break line: %v\n", seg, currentWidth, run.Width, whiteSpacesWidth, allowedWidth, breakLine)
 
 		if breakLine {
 			currentWidth = run.Width
 			totalHeight += lineHeight
+			xOffset = 0
 			totalWidth = max(run.Width, totalWidth)
-			xOffset = 0.0
 			yOffset += lineHeight
 		} else {
-			spaceWidth := float32(1.0)
-			currentWidth += run.Width + spaceWidth
-			totalWidth += run.Width + spaceWidth
-			xOffset += spaceWidth
+			xOffset = currentWidth + whiteSpacesWidth
+			currentWidth = xOffset + run.Width
+			totalWidth = max(totalWidth, currentWidth)
 		}
-	}
 
-		yOffset += lineHeight
+		//fmt.Printf("xOffset: %f, yOffset: %f\n", xOffset, yOffset)
 
 		placed := PlacedSegment {
 			Segment: run,

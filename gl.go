@@ -278,6 +278,15 @@ func newGlyphTexture(size int32) *GlyphTexture {
 	return &texture
 }
 
+func readGlyphTexture(tex *GlyphTexture) image.Image {
+	gl.BindTexture(GL_TEXTURE_2D, tex.handle)
+	img := image.NewRGBA(image.Rect(0, 0, int(tex.width), int(tex.height)))
+	//gl.ReadPixels(0, 0, tex.width, tex.height, gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(img.Pix))
+	gl.GetTexImage(GL_TEXTURE_2D, 0, gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(img.Pix))
+
+	return img
+}
+
 func replaceGlpyhTexture(tex *GlyphTexture, img image.Image) {
 	r := img.Bounds()
 	rgba := image.NewRGBA(r)

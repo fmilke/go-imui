@@ -20,3 +20,13 @@ func loadPng(path string) (i image.Image, err error) {
 	return i, nil
 }
 
+func writePng(path string, img image.Image) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+
+	err = png.Encode(file, img)
+
+	return err
+}

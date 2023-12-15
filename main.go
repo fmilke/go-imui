@@ -96,6 +96,9 @@ func (a *App) Init(width int, height int, name string) {
 	a.fontFace = face
 }
 
+
+var done = false;
+
 func (a *App) Loop(
 	ttf *truetype.Font,
 	hbFont *harfbuzz.Font,
@@ -103,7 +106,7 @@ func (a *App) Loop(
 
 	fmt.Println("======")
 	indices := RenderText(
-		"Firstverylongline1 Firstverylongline2",
+		"Should be on the same but break somewhere Firstverylongline2",
 		ttf,
 		hbFont,
 		a.fontFace,
@@ -113,6 +116,15 @@ func (a *App) Loop(
 
 	for !a.window.ShouldClose() {
 		draw(1, a.window, a.program, a.glyphTex, int32(indices))
+
+		if !done {
+			img := readGlyphTexture(a.glyphTex)
+			err := writePng("./test.png", img)
+			if err != nil {
+				fmt.Println(err)
+			}
+			done = true;
+		}
 	}
 }
 
