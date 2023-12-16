@@ -226,7 +226,8 @@ func (c *GlyphView) IntoCell(
 	h := int32(ih)
 
 	x := cx*cw 
-	y := t.height - cy*ch - h
+//	y := t.height - cy*ch - h
+	y := cy*ch
 
 	gl.TexSubImage2D(
 		t.target,

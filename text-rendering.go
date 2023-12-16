@@ -15,7 +15,7 @@ import (
 const PT_PER_LOGICAL_INCH = 72.0
 const PIXELS_PER_LOGICAL_INCH = 96.0 // aka. DPI
 
-const DEBUG_GLYPH_PLACEMENT = false;
+const DEBUG_GLYPH_PLACEMENT = true;
 
 const DEB_UV = 2;
 const DEB_POS = 1;
@@ -35,7 +35,7 @@ func insertGlyph(
 	verts *[]float32,
 	metrics *freetype.Metrics,
 	offset int,
-	loc Quad,
+	uvs Quad,
 ) {
 	px_x := 1.0 / float32(WIN_WIDTH)
 	px_y := 1.0 / float32(WIN_HEIGHT)
@@ -46,13 +46,20 @@ func insertGlyph(
 	char_hbear_y := float32(metrics.HorizontalBearingY)
 
 	// TODO: properly calculate baseline
-	fixed_offset := float32(30.0)
+	base_line := float32(30.0)
 
 	x := xAdv * px_x
-	y := (fixed_offset-char_hbear_y + yOffset) * px_y
+	y := (base_line-char_hbear_y + yOffset) * px_y
 
 	w := char_width * px_x
 	h := char_height * px_y
+
+	pos := Quad {
+		X: x,
+		Y: y,
+		W: w,
+		H: h,
+	}
 
 	if DEBUG_GLYPH_PLACEMENT {
 		fmt.Printf("Inserting Quad: offset: %d, i: %d\n", offset, i)
@@ -60,7 +67,7 @@ func insertGlyph(
 
 	if DEBUG_GLYPH_COMPONENTS > 0 {
 		if DEBUG_GLYPH_COMPONENTS & DEB_UV > 0 {
-			fmt.Printf("Location In GlpyhTex: %v\n", loc)
+			fmt.Printf("Location In GlpyhTex: %v\n", uvs)
 		}
 
 		fmt.Println()
@@ -69,28 +76,27 @@ func insertGlyph(
 	insertGlyphComponents(
 		verts,
 		i + offset,
-		x,
-		y,
-		w,
-		h,
-		loc,
+		pos,
+		uvs,
 	)
 }
 
 func insertGlyphComponents(
 	verts *[]float32,
 	i int,
-	x float32,
-	y float32,
-	w float32,
-	h float32,
+	pos Quad,
 	loc Quad,
 ) {
 
 	u := loc.X
 	v := loc.Y
 	uw := loc.W
-	vh := loc.W
+	vh := loc.H
+
+	x := pos.X
+	y := pos.Y
+	w := pos.W
+	h := pos.H
 
 	u_min := u
 	v_min := v
@@ -342,10 +348,6 @@ func CopyGlyphDataIntoVertexBuffer(
 ) int {
 
 	segment := placement.Segment
-
-	glyphCount := len(segment.Glyphs)
-
-	cellSlotX := int32(0)
 	xadv := placement.XOffset
 	coi := 0
 
@@ -381,16 +383,18 @@ func CopyGlyphDataIntoVertexBuffer(
 		vSize := 1.0/cellHeight * heightRatio
 	
 		uOffset := float32(cx)*float32(32.0/1024.0)
-		vOffset := 1.0 - float32(cy)*float32(32.0/1024.0) - vSize
+		vOffset := float32(cy)*float32(32.0/1024.0)
 
-		loc := Quad {
+		uvs := Quad {
 			X: uOffset,
 			Y: vOffset,
 			W: uSize,
 			H: vSize,
 		}
 
-		insertGlyph(xadv, placement.YOffset, coi, &vertices, metrics, offset, loc)
+		fmt.Printf("uvs: %v\n", uvs)
+
+		insertGlyph(xadv, placement.YOffset, coi, &vertices, metrics, offset, uvs)
 		cid++
 
 		if DEBUG_GLYPH_PLACEMENT {
@@ -399,11 +403,9 @@ func CopyGlyphDataIntoVertexBuffer(
 
 		xadv += g.XAdvance
 		coi += COMPS_PER_GLYPH
-
-		cellSlotX++
 	}
 
-	return glyphCount * VERTS_PER_GLYPH
+	return len(segment.Glyphs) * VERTS_PER_GLYPH
 }
 
 func FontScaleFactor(font *truetype.Font, m Metric, size Sp) float32 {
@@ -508,7 +510,6 @@ func RenderText(
 		offset += len(p.Segment.Glyphs) * COMPS_PER_GLYPH
 
 		fmt.Println("-----")
-		//fmt.Printf("%v\n", vertices)
 	}
 
 	makeSegmentVaos(vertices)
