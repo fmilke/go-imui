@@ -16,7 +16,9 @@ const WIN_HEIGHT = 480
 const WIN_NAME = "Testing"
 
 const LOG_FONT = false
-const USE_DEBUG_UV = false;
+const USE_DEBUG_UV = false
+const DEBUG_SHADERS = true
+const DEBUG = true
 
 func init() {
 	runtime.LockOSThread()
@@ -25,7 +27,6 @@ func init() {
 func main() {
 
 	err := glfw.Init()
-
 	if err != nil {
 		panic(err)
 	}
@@ -47,7 +48,7 @@ func main() {
 
 type App struct {
 	window  *glfw.Window
-	program uint32
+	context *Context
 
 	fontFace *freetype.Face
 
@@ -70,8 +71,7 @@ func (a *App) Init(width int, height int, name string) {
 	window.MakeContextCurrent()
 
 	a.window = window
-
-	a.program = initOpenGL()
+	a.context = initOpenGL()
 
 	glTex := newGlyphTexture(1024)
 	
@@ -96,7 +96,6 @@ func (a *App) Init(width int, height int, name string) {
 	a.fontFace = face
 }
 
-
 var done = false;
 
 func (a *App) Loop(
@@ -115,7 +114,7 @@ func (a *App) Loop(
 	)
 
 	for !a.window.ShouldClose() {
-		draw(1, a.window, a.program, a.glyphTex, int32(indices))
+		draw(1, a.window, a.context, a.glyphTex, int32(indices))
 
 		if !done {
 			img := readGlyphTexture(a.glyphTex)

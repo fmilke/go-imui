@@ -27,7 +27,6 @@ type Quad struct {
 	W float32
 	H float32
 }
-
 func insertGlyph(
 	xAdv float32,
 	yOffset float32,

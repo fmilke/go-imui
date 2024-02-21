@@ -1,5 +1,7 @@
 package main
 
+import "image"
+
 type GlyphView struct {
 	size int32
 	tex  *GlyphTexture
@@ -35,4 +37,34 @@ func (at GlyphAtlas) GetQuad(r rune) (Quad, bool) {
 }
 
 
+// Alternate text atlas
+
+
+type Node struct
+{
+	Child [2]*Node
+	Rect Quad
+	ImageId int
+}
+
+func (n *Node) IsLeaf() bool {
+	return n.Child[0] == nil && n.Child[1] == nil
+}
+
+func (n *Node) CanContainImage(i int) {
+}
+
+func (n *Node) Insert(i image.Image) *Node {
+	if n.IsLeaf() {
+		isOccupied := n.ImageId != 0
+		if isOccupied {
+			return nil
+		}
+
+
+	} else {
+	}
+
+	return nil
+}
 

@@ -1,12 +1,14 @@
 package main
 
 import (
-	"strings"
+	"errors"
 	"fmt"
 	"image"
 	imageDraw "image/draw"
 	"log"
+	"strings"
 	"unsafe"
+
 	"github.com/go-gl/gl/v4.1-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 )
@@ -87,18 +89,70 @@ const (
 ` + "\x00"
 )
 
+func ToGlClipSpace(value Float, dim Float) Float {
+	return (2 * value / dim) - 1.0
+}
+
+type ProgramId = uint32
+type UniformId = int32
+
+const INACTIVE_UNIFORM int32 = -1
+
 type GlyphTexture struct {
-	handle  uint32
-	target  uint32
-	width   int32
-	height  int32
+	handle uint32
+	target uint32
+	width  int32
+	height int32
 }
 
 func cString(len int) string {
 	return strings.Repeat("\x00", len+1)
 }
 
-func initOpenGL() uint32 {
+func DebugPrintUniformInfos(program ProgramId) {
+	var count int32
+	gl.GetProgramiv(program, gl.ACTIVE_UNIFORMS, &count)
+	fmt.Printf("Has %d uniforms:\n", count)
+	for i := int32(0); i < count; i++ {
+		info := GetUniformInfo(program, i)
+		fmt.Printf("Info: %v\n", info)
+	}
+}
+
+func GetUniformInfo(program ProgramId, uniform UniformId) UniformInfo {
+
+	if uniform == INACTIVE_UNIFORM {
+		panic("Trying to get info for inactive uniform")
+	}
+
+	maxNameLen := gl.UNIFORM_NAME_LENGTH
+	buf := cString(maxNameLen)
+
+	var written int32
+	var size int32
+	var t uint32
+	gl.GetActiveUniform(program, uint32(uniform), int32(maxNameLen), &written, &size, &t, gl.Str(buf))
+	err := GetWrappedGlError()
+	if err != nil {
+		panic(err)
+	}
+
+	return UniformInfo{
+		Index: uint32(uniform),
+		Name:  buf,
+		Size:  size,
+		Type:  t,
+	}
+}
+
+type UniformInfo struct {
+	Index uint32
+	Name  string
+	Size  int32
+	Type  uint32
+}
+
+func initOpenGL() *Context {
 	if err := gl.Init(); err != nil {
 		panic(err)
 	}
@@ -121,41 +175,115 @@ func initOpenGL() uint32 {
 	version := gl.GoStr(gl.GetString(gl.VERSION))
 	log.Println("OpenGL Version", version)
 
-	vertexShader, err := compileShader(vertexShaderSource, gl.VERTEX_SHADER)
+	glslVersion := gl.GoStr(gl.GetString(gl.SHADING_LANGUAGE_VERSION))
+	log.Println("GLSL Version", glslVersion)
 
+	ctx := Context{
+		Width:  WIN_WIDTH,
+		Height: WIN_HEIGHT,
+	}
+
+	ctx.TextShader = CreateTextShader()
+	ctx.RectShader = CreateRectShader()
+
+	return &ctx
+}
+
+func CreateTextShader() uint32 {
+	r, err := CompileProgram(vertexShaderSource, fragmentShaderSource)
 	if err != nil {
 		panic(err)
 	}
 
-	fragmentShader, err := compileShader(fragmentShaderSource, gl.FRAGMENT_SHADER)
+    if DEBUG_SHADERS {
+        DebugPrintUniformInfos(r)
+    }
+	
+	return r
+}
+
+func CreateRectShader() RectShader {
+	r, err := CompileProgram(rectVSSource, rectFSSource)
 	if err != nil {
 		panic(err)
+	}
+
+    if DEBUG_SHADERS {
+        DebugPrintUniformInfos(r)
+    }
+
+	return RectShader{
+		Program:  r,
+		Ul_Pos:   GetUniformLocation(r, "pos"),
+		Ul_Color: GetUniformLocation(r, "color"),
+	}
+}
+
+func CompileProgram(vs string, fs string) (ProgramId, error) {
+	vertexShader, err := compileShader(vs, gl.VERTEX_SHADER)
+	if err != nil {
+		return 0, err
+	}
+
+	fragmentShader, err := compileShader(fs, gl.FRAGMENT_SHADER)
+	if err != nil {
+		return 0, err
 	}
 
 	prog := gl.CreateProgram()
 
 	gl.AttachShader(prog, vertexShader)
+	CheckGLErrors()
 	gl.AttachShader(prog, fragmentShader)
+	CheckGLErrors()
 	gl.LinkProgram(prog)
-	return prog
+
+	var isLinked int32
+	gl.GetProgramiv(prog, gl.LINK_STATUS, &isLinked)
+	if isLinked == gl.FALSE {
+		gl.DeleteProgram(prog)
+		return 0, errors.New("could not link program")
+	}
+
+	return prog, nil
+}
+
+func GetUniformLocation(prog uint32, name string) int32 {
+	asCStr, free := gl.Strs(name)
+	loc := gl.GetUniformLocation(prog, *asCStr)
+	free()
+
+	if loc == INACTIVE_UNIFORM {
+		panic(fmt.Sprintf("Could not find uniform location %s", name))
+	}
+
+	return loc
 }
 
 func draw(
 	vao uint32,
 	window *glfw.Window,
-	program uint32,
+	context *Context,
 	tex *GlyphTexture,
 	indices int32,
 ) {
+	// Clear previous buffer
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-	gl.UseProgram(program)
 
-	gl.BindTexture(tex.target, tex.handle)
-	gl.ActiveTexture(gl.TEXTURE0)
+	// TODO: Move to somewhere else
+	/*
+				gl.UseProgram(context.TextShader)
+				gl.BindTexture(tex.target, tex.handle)
+				gl.ActiveTexture(gl.TEXTURE0)
+		DrawQuad
+				gl.DrawArrays(gl.TRIANGLES, 0, indices)
+	*/
 
-	gl.DrawArrays(gl.TRIANGLES, 0, indices)
+	DrawQuad(context, NewAbsPos(10, 30, 100, 150), 123)
 
+	// Handle events
 	glfw.PollEvents()
+	// Push to display
 	window.SwapBuffers()
 }
 
@@ -196,7 +324,7 @@ func compileShader(source string, shaderType uint32) (uint32, error) {
 
 		log := cString(int(logLength))
 		gl.GetShaderInfoLog(shader, logLength, nil, gl.Str(log))
-		return 0, fmt.Errorf("Failed to compile shader %v: %v", source, log)
+		return 0, fmt.Errorf("failed to compile shader %v: %v", source, log)
 	}
 
 	return shader, nil
@@ -225,9 +353,9 @@ func (c *GlyphView) IntoCell(
 	w := int32(iw)
 	h := int32(ih)
 
-	x := cx*cw 
-//	y := t.height - cy*ch - h
-	y := cy*ch
+	x := cx * cw
+	//	y := t.height - cy*ch - h
+	y := cy * ch
 
 	gl.TexSubImage2D(
 		t.target,
@@ -274,7 +402,7 @@ func newGlyphTexture(size int32) *GlyphTexture {
 
 	CheckGLErrorsPrint("TexStorage2D")
 
-	gl.BindTexture(GL_TEXTURE_2D,  NULL_TEX_HANDLE)
+	gl.BindTexture(GL_TEXTURE_2D, NULL_TEX_HANDLE)
 
 	return &texture
 }
@@ -315,33 +443,51 @@ func CheckGLErrors() {
 	CheckGLErrorsPrint("")
 }
 
-func CheckGLErrorsPrint(s string) {
+func GetWrappedGlError() error {
 	glerror := gl.GetError()
 	if glerror == gl.NO_ERROR {
+		return nil
+	}
+
+	var sb strings.Builder
+
+	for glerror != gl.NO_ERROR {
+		sb.WriteString(GetErrorAsString(glerror))
+		glerror = gl.GetError()
+	}
+
+	return errors.New(sb.String())
+}
+
+func GetErrorAsString(glError uint32) string {
+	switch glError {
+	case gl.INVALID_ENUM:
+		return "GL_INVALID_ENUM"
+	case gl.INVALID_VALUE:
+		return "GL_INVALID_VALUE"
+	case gl.INVALID_OPERATION:
+		return "GL_INVALID_OPERATION"
+	case gl.STACK_OVERFLOW:
+		return "GL_STACK_OVERFLOW"
+	case gl.STACK_UNDERFLOW:
+		return "GL_STACK_UNDERFLOW"
+	case gl.OUT_OF_MEMORY:
+		return "GL_OUT_OF_MEMORY"
+	default:
+		return fmt.Sprintf("<errno: %d>", glError)
+	}
+}
+
+func CheckGLErrorsPrint(s string) {
+	glError := gl.GetError()
+	if glError == gl.NO_ERROR {
 		return
 	}
 
 	fmt.Printf("%v gl.GetError() reports", s)
-	for glerror != gl.NO_ERROR {
-		fmt.Printf(" ")
-		switch glerror {
-		case gl.INVALID_ENUM:
-			fmt.Printf("GL_INVALID_ENUM")
-		case gl.INVALID_VALUE:
-			fmt.Printf("GL_INVALID_VALUE")
-		case gl.INVALID_OPERATION:
-			fmt.Printf("GL_INVALID_OPERATION")
-		case gl.STACK_OVERFLOW:
-			fmt.Printf("GL_STACK_OVERFLOW")
-		case gl.STACK_UNDERFLOW:
-			fmt.Printf("GL_STACK_UNDERFLOW")
-		case gl.OUT_OF_MEMORY:
-			fmt.Printf("GL_OUT_OF_MEMORY")
-		default:
-			fmt.Printf("%d", glerror)
-		}
-		glerror = gl.GetError()
+	for glError != gl.NO_ERROR {
+		fmt.Printf(" %s", GetErrorAsString(glError))
+		glError = gl.GetError()
 	}
 	fmt.Printf("\n")
 }
-
