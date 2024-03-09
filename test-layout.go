@@ -43,17 +43,19 @@ func (ui *UI) DrawButton(s string) bool {
     maxBoxWidth := 400.0
     maxBoxHeight := 200.0
 
-    x := float32(0.0)
-    y := float32(0.0)
+    boxX := float32(0.0)
+    boxY := float32(0.0)
     maxTextWidth := maxBoxWidth - 2.0 * paddingX
 
     placements := PlaceSegments(s, ui.App.ttf, ui.App.hbFont, ui.App.fontFace, float32(maxTextWidth), 32.0)
 
-    maxBoxWidth = min(maxBoxWidth, float64(placements.Width))
+    maxBoxWidth = min(maxBoxWidth, float64(placements.Width) + paddingX * 2.0)
     maxBoxHeight = min(maxBoxHeight, float64(placements.Height + float32(paddingY) * 2.0))
-    DrawQuad(ui.Context, NewAbsPos(x, y, float32(maxBoxWidth), float32(maxBoxHeight)),  123)
+    DrawQuad(ui.Context, NewAbsPos(boxX, boxY, float32(maxBoxWidth), float32(maxBoxHeight)),  123)
 
-    RenderText2(placements, ui.App, NewAbsPos(x, y, 0, 0))
+    textX := boxX + float32(paddingX)
+    textY := boxY + float32(paddingY)
+    RenderText2(placements, ui.App, NewAbsPos(textX, textY, 0, 0))
 
     return id == ui.Clicked
 }

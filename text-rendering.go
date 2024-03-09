@@ -416,6 +416,8 @@ func FontScaleFactor(font *truetype.Font, m Metric, size Sp) float32 {
 	return factor
 }
 
+var logged int = 10
+
 func PlaceSegments (
 	text string,
 	ttf *truetype.Font,
@@ -435,7 +437,7 @@ func PlaceSegments (
 	var totalHeight = lineHeight
 	var totalWidth float32
 	var placedSegs []PlacedSegment
-	var yOffset float32 = lineHeight * 2.0
+	var yOffset float32 = 0
 	var xOffset float32 = 0
 
 	for _, seg := range segs {
@@ -457,17 +459,26 @@ func PlaceSegments (
 			totalWidth = max(totalWidth, currentWidth)
 		}
 
-		//fmt.Printf("xOffset: %f, yOffset: %f\n", xOffset, yOffset)
-
 		placed := PlacedSegment {
 			Segment: run,
 			XOffset: xOffset,
 			YOffset: yOffset,
 		}
 
+        if logged > 0 {
+            fmt.Printf("segment with offset: %v, %v\n", xOffset,  yOffset)
+        }
+
 		indicesToRender += len(run.Glyphs)
 		placedSegs = append(placedSegs, placed)
 	}
+
+    if logged > 0 {
+        fmt.Println("----------------")
+    }
+
+    logged = logged- 1
+
 
 	return RenderTextResult {
 		Width: totalWidth,
@@ -538,13 +549,13 @@ func RenderText2(placement RenderTextResult, app *App, pos Position) {
 
 	makeSegmentVaos(verticesCached)
 
-    x := ToGlClipSpace(pos.W, float32(app.context.Width)) 
-	y := ToGlClipSpace(pos.H, float32(app.context.Height))
+    x := app.context.ToClipSpaceX(pos.X)
+    y := app.context.ToClipSpaceY(pos.Y)
 
     gl.UseProgram(app.context.TextShader.Program)
     gl.BindTexture(app.glyphTex.target, app.glyphTex.handle)
 
-    fmt.Printf("rendering text with offset: %v, %v\n", x, y)
+    //fmt.Printf("rendering text with offset: %v, %v\n", x, y)
 
     // set offset
 	gl.Uniform2f(
@@ -552,6 +563,9 @@ func RenderText2(placement RenderTextResult, app *App, pos Position) {
 		x,
 		y,
 	)
+
+    gl.Uniform1f(app.context.TextShader.Ul_Wireframe, .0) // read from context
+    gl.Uniform3f(app.context.TextShader.Ul_TextColor, .3, .3, .3)
 
     gl.ActiveTexture(gl.TEXTURE0)
     gl.DrawArrays(gl.TRIANGLES, 0, int32(indicesToRender))

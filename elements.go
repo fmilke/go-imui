@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/go-gl/gl/v4.1-core/gl"
 )
 
@@ -85,7 +83,7 @@ func DrawQuad(
     w := context.ToClipSpaceX(pos.W) - x
     h := context.ToClipSpaceY(pos.H) - y
 
-    fmt.Printf("drawing quad: %v, %v, %v, %v\n", x, y, w, h)
+    //fmt.Printf("drawing quad: %v, %v, %v, %v\n", x, y, w, h)
 
 	gl.UseProgram(context.RectShader.Program)
 	gl.Uniform4f(

@@ -9,6 +9,8 @@ type RectShader struct {
 type TextShader struct {
     Program ProgramId
 	Ul_Offset UniformId
+    Ul_Wireframe UniformId
+    Ul_TextColor UniformId
 }
 
 type Context struct {

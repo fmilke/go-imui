@@ -74,6 +74,8 @@ const (
 	in vec3 bc; // barycentric coordinates
 
 	uniform sampler2D glyphTexture;
+    uniform float bWireframe;
+    uniform vec3 textColor;
 
     out vec4 clr;
     void main() {
@@ -84,10 +86,11 @@ const (
 		} else {
 			b = 0.0;
 		}
-		vec4 wire_frame = vec4(1.0, .0, .0, 1.0) * b;
-        vec4 frag_clr = vec4(texture(glyphTexture, uv));
+		vec4 wire_frame = vec4(1.0, .0, .0, 1.0) * b * bWireframe;
+        float opacity = vec4(texture(glyphTexture, uv)).r;
+        vec4 frag_clr = vec4(textColor, opacity);
 
-		clr = wire_frame * .5 + frag_clr;
+		clr = wire_frame + frag_clr;
     }
 ` + "\x00"
 )
@@ -200,6 +203,9 @@ func initOpenGL() *Context {
 	ctx.TextShader = CreateTextShader()
 	ctx.RectShader = CreateRectShader()
 
+    gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+    gl.Enable(gl.BLEND)
+
 	return &ctx
 }
 
@@ -219,6 +225,8 @@ func CreateTextShader() TextShader {
     return TextShader{
         Program: r,
         Ul_Offset: FindUniformOrPanic("offset", uniforms).Index,
+        Ul_Wireframe: FindUniformOrPanic("bWireframe", uniforms).Index,
+        Ul_TextColor: FindUniformOrPanic("textColor", uniforms).Index,
     }
 }
 
