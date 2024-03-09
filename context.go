@@ -1,16 +1,28 @@
 package main
 
 type RectShader struct {
-	Program uint32
-	Ul_Pos int32
-	Ul_Color int32
+	Program ProgramId
+	Ul_Pos UniformId
+	Ul_Color UniformId
+}
+
+type TextShader struct {
+    Program ProgramId
+	Ul_Offset UniformId
 }
 
 type Context struct {
-	TextShader uint32
+	TextShader TextShader
 	RectShader RectShader
 
 	Width uint32
 	Height uint32
 }
 
+func (c *Context) ToClipSpaceX(v Float) Float {
+	return (2 * v / float32(c.Width)) - 1.0
+}
+
+func (c *Context) ToClipSpaceY(v Float) Float {
+	return (2 * v / float32(c.Height)) - 1.0
+}

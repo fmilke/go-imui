@@ -35,15 +35,7 @@ func main() {
 	app := createApp()
 	app.Init(WIN_WIDTH, WIN_HEIGHT, WIN_NAME)
 
-	path := GetSomeFont()
-	ttf, err := LoadTTF(path)
-
-	if err != nil {
-		panic(err)
-	}
-	hbFont := HBFont(ttf)
-
-	app.Loop(ttf, hbFont)
+	app.Loop()
 }
 
 type App struct {
@@ -51,6 +43,8 @@ type App struct {
 	context *Context
 
 	fontFace *freetype.Face
+    hbFont *harfbuzz.Font
+    ttf *truetype.Font
 
 	glyphTex  *GlyphTexture
 	glyphView GlyphView
@@ -59,6 +53,7 @@ type App struct {
 func createApp() *App {
 	return &App{}
 }
+
 
 func (a *App) Init(width int, height int, name string) {
 
@@ -78,7 +73,7 @@ func (a *App) Init(width int, height int, name string) {
 	if USE_DEBUG_UV {
 		png, err := loadPng("./assets/checkered-uvs.png");
 		if err == nil {
-			replaceGlpyhTexture(glTex, png)
+			replaceGlyphTexture(glTex, png)
 		} else {
 			fmt.Println("Could not load test uv", err)
 		}
@@ -91,39 +86,36 @@ func (a *App) Init(width int, height int, name string) {
 		tex:  glTex,
 	}
 
+    // setup harfbuzz
+	path := GetSomeFont()
+	ttf, err := LoadTTF(path)
+	if err != nil {
+		panic(err)
+	}
+
+	hbFont := HBFont(ttf)
+
 	a.glyphTex = glTex
 	a.glyphView = view
 	a.fontFace = face
+    a.hbFont = hbFont
+    a.ttf = ttf
 }
 
 var done = false;
 
-func (a *App) Loop(
-	ttf *truetype.Font,
-	hbFont *harfbuzz.Font,
-) {
-
-	fmt.Println("======")
-	indices := RenderText(
-		"Should be on the same but break somewhere Firstverylongline2",
-		ttf,
-		hbFont,
-		a.fontFace,
-		a.glyphView,
-		a.glyphTex,
-	)
+func (a *App) Loop() {
 
 	for !a.window.ShouldClose() {
-		draw(1, a.window, a.context, a.glyphTex, int32(indices))
 
-		if !done {
-			img := readGlyphTexture(a.glyphTex)
-			err := writePng("./test.png", img)
-			if err != nil {
-				fmt.Println(err)
-			}
-			done = true;
-		}
+        BeginFrame()
+
+		DrawFrame(a, a.context)
+
+        // Handle events
+        glfw.PollEvents()
+        // Push to display
+        a.window.SwapBuffers()
 	}
 }
 

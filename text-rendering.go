@@ -10,12 +10,13 @@ import (
 	"github.com/benoitkugler/textlayout/harfbuzz"
 	"github.com/danielgatis/go-findfont/findfont"
 	"github.com/danielgatis/go-freetype/freetype"
+	"github.com/go-gl/gl/v4.1-core/gl"
 )
 
 const PT_PER_LOGICAL_INCH = 72.0
 const PIXELS_PER_LOGICAL_INCH = 96.0 // aka. DPI
 
-const DEBUG_GLYPH_PLACEMENT = true;
+const DEBUG_GLYPH_PLACEMENT = false;
 
 const DEB_UV = 2;
 const DEB_POS = 1;
@@ -391,7 +392,7 @@ func CopyGlyphDataIntoVertexBuffer(
 			H: vSize,
 		}
 
-		fmt.Printf("uvs: %v\n", uvs)
+		//fmt.Printf("uvs: %v\n", uvs)
 
 		insertGlyph(xadv, placement.YOffset, coi, &vertices, metrics, offset, uvs)
 		cid++
@@ -505,15 +506,54 @@ func RenderText(
 
 	for _, p := range placement.PlacedSegments {
 		indicesToRender += CopyGlyphDataIntoVertexBuffer(&p, fontFace, glyphView, glyphTex, offset, vertices)
-		fmt.Printf("Offset in vao: %v\n", offset)
 		offset += len(p.Segment.Glyphs) * COMPS_PER_GLYPH
-
-		fmt.Println("-----")
 	}
 
 	makeSegmentVaos(vertices)
-	CheckGLErrorsPrint("RenderSegment: makeSegmentVaos")
 
 	return indicesToRender
+}
+
+// TODO: caching can be removed, once glyph atlas is working
+// but still need to figure out, what happening, when too many glyphs
+var indicesToRenderCached int = 0
+var verticesCached []float32
+
+func RenderText2(placement RenderTextResult, app *App, pos Position) {
+    indicesToRender := 0
+	offset := 0
+
+    if verticesCached == nil {
+        verticesCached = make([]float32, placement.Indices*COMPS_PER_GLYPH)
+
+        for _, p := range placement.PlacedSegments {
+            indicesToRender += CopyGlyphDataIntoVertexBuffer(&p, app.fontFace, app.glyphView, app.glyphTex, offset, verticesCached)
+            offset += len(p.Segment.Glyphs) * COMPS_PER_GLYPH
+        }
+
+        indicesToRenderCached = indicesToRender
+    } else {
+        indicesToRender = indicesToRenderCached
+    }
+
+	makeSegmentVaos(verticesCached)
+
+    x := ToGlClipSpace(pos.W, float32(app.context.Width)) 
+	y := ToGlClipSpace(pos.H, float32(app.context.Height))
+
+    gl.UseProgram(app.context.TextShader.Program)
+    gl.BindTexture(app.glyphTex.target, app.glyphTex.handle)
+
+    fmt.Printf("rendering text with offset: %v, %v\n", x, y)
+
+    // set offset
+	gl.Uniform2f(
+		app.context.TextShader.Ul_Offset,
+		x,
+		y,
+	)
+
+    gl.ActiveTexture(gl.TEXTURE0)
+    gl.DrawArrays(gl.TRIANGLES, 0, int32(indicesToRender))
 }
 

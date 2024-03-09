@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/go-gl/gl/v4.1-core/gl"
 )
 
@@ -20,7 +22,7 @@ const (
 
 	void main() {
 		vec2 weights = size_weights[gl_VertexID];
-		gl_Position = vec4(pos.xy + vec2(weights.x * pos.z, weights.y + pos.w), .0f, 1.0f);	
+		gl_Position = vec4(pos.xy + vec2(weights.x * pos.z, 2.0f - weights.y * pos.w), .0f, 1.0f);	
 	}
 
 	` + "\x00"
@@ -77,11 +79,13 @@ func DrawQuad(
 	pos Position,
 	color Color,
 ) {
-	x := ToGlClipSpace(pos.X, float32(context.Width))
-	y := ToGlClipSpace(pos.Y, float32(context.Height))
+    x := context.ToClipSpaceX(pos.X)
+    y := context.ToClipSpaceY(pos.Y)
 
-	w := ToGlClipSpace(pos.W, float32(context.Width)) - x
-	h := ToGlClipSpace(pos.H, float32(context.Height)) - y
+    w := context.ToClipSpaceX(pos.W) - x
+    h := context.ToClipSpaceY(pos.H) - y
+
+    fmt.Printf("drawing quad: %v, %v, %v, %v\n", x, y, w, h)
 
 	gl.UseProgram(context.RectShader.Program)
 	gl.Uniform4f(

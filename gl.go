@@ -10,7 +10,6 @@ import (
 	"unsafe"
 
 	"github.com/go-gl/gl/v4.1-core/gl"
-	"github.com/go-gl/glfw/v3.3/glfw"
 )
 
 const GL_S_FLOAT = 4
@@ -47,6 +46,8 @@ const (
 	in vec2 a_pos;
 	in vec2 a_uv;
 
+    uniform vec2 offset;
+
 	out vec2 uv;
 	out vec3 bc; // barycentric coordinates
 
@@ -57,7 +58,9 @@ const (
 	);
 
     void main() {
-		vec2 pos_normalized = vec2(a_pos.x - .5, .5 - a_pos.y)* 2.0;
+		vec2 pos_normalized = vec2(a_pos.x, a_pos.y)* 2.0 + offset;
+        pos_normalized.y = -pos_normalized.y;
+
 		gl_Position = vec4(pos_normalized, .0, 1.0);
 		uv = vec2(a_uv.x, a_uv.y);
 
@@ -109,13 +112,22 @@ func cString(len int) string {
 	return strings.Repeat("\x00", len+1)
 }
 
-func DebugPrintUniformInfos(program ProgramId) {
-	var count int32
-	gl.GetProgramiv(program, gl.ACTIVE_UNIFORMS, &count)
-	fmt.Printf("Has %d uniforms:\n", count)
+func GetUniformInfos(program ProgramId) []UniformInfo {
+    var infos []UniformInfo
+    var count int32
+    gl.GetProgramiv(program, gl.ACTIVE_UNIFORMS, &count)
+
 	for i := int32(0); i < count; i++ {
-		info := GetUniformInfo(program, i)
-		fmt.Printf("Info: %v\n", info)
+        infos = append(infos, GetUniformInfo(program, i))
+	}
+    
+    return infos
+}
+
+func DebugPrintUniformInfos(infos []UniformInfo) {
+	log.Printf("Has %d uniforms:\n", len(infos))
+    for _, info := range(infos) {
+		log.Printf("Info: %+v\n", info)
 	}
 }
 
@@ -138,15 +150,17 @@ func GetUniformInfo(program ProgramId, uniform UniformId) UniformInfo {
 	}
 
 	return UniformInfo{
-		Index: uint32(uniform),
-		Name:  buf,
+        Program: program,
+		Index: uniform,
+		Name:  strings.TrimRight(buf, "\x00"), 
 		Size:  size,
 		Type:  t,
 	}
 }
 
 type UniformInfo struct {
-	Index uint32
+    Program ProgramId
+	Index UniformId
 	Name  string
 	Size  int32
 	Type  uint32
@@ -189,17 +203,33 @@ func initOpenGL() *Context {
 	return &ctx
 }
 
-func CreateTextShader() uint32 {
+func CreateTextShader() TextShader {
 	r, err := CompileProgram(vertexShaderSource, fragmentShaderSource)
 	if err != nil {
 		panic(err)
 	}
 
-    if DEBUG_SHADERS {
-        DebugPrintUniformInfos(r)
+	if DEBUG_SHADERS {
+		DebugPrintUniformInfos(GetUniformInfos(r))
+	}
+
+
+    uniforms := GetUniformInfos(r)
+
+    return TextShader{
+        Program: r,
+        Ul_Offset: FindUniformOrPanic("offset", uniforms).Index,
     }
-	
-	return r
+}
+
+func FindUniformOrPanic(name string, infos []UniformInfo) UniformInfo {
+    for _, i := range(infos) {
+        if i.Name == name {
+            return i;
+        }
+    }
+
+    panic("could not find uniform " + name)
 }
 
 func CreateRectShader() RectShader {
@@ -208,14 +238,16 @@ func CreateRectShader() RectShader {
 		panic(err)
 	}
 
-    if DEBUG_SHADERS {
-        DebugPrintUniformInfos(r)
-    }
+    uniforms := GetUniformInfos(r)
+
+	if DEBUG_SHADERS {
+		DebugPrintUniformInfos(uniforms)
+	}
 
 	return RectShader{
 		Program:  r,
-		Ul_Pos:   GetUniformLocation(r, "pos"),
-		Ul_Color: GetUniformLocation(r, "color"),
+		Ul_Pos:   FindUniformOrPanic("pos", uniforms).Index,
+		Ul_Color: FindUniformOrPanic("color", uniforms).Index,
 	}
 }
 
@@ -253,38 +285,29 @@ func GetUniformLocation(prog uint32, name string) int32 {
 	loc := gl.GetUniformLocation(prog, *asCStr)
 	free()
 
+    log.Printf("program: %d, uniform: %s, loc: %d\n", prog, name, loc)
 	if loc == INACTIVE_UNIFORM {
-		panic(fmt.Sprintf("Could not find uniform location %s", name))
+		//panic(fmt.Sprintf("could not find uniform location %s", name))
 	}
 
 	return loc
 }
 
-func draw(
-	vao uint32,
-	window *glfw.Window,
-	context *Context,
-	tex *GlyphTexture,
-	indices int32,
-) {
+func BeginFrame() {
 	// Clear previous buffer
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+}
 
-	// TODO: Move to somewhere else
-	/*
-				gl.UseProgram(context.TextShader)
-				gl.BindTexture(tex.target, tex.handle)
-				gl.ActiveTexture(gl.TEXTURE0)
-		DrawQuad
-				gl.DrawArrays(gl.TRIANGLES, 0, indices)
-	*/
+func FinishFrame() {
 
-	DrawQuad(context, NewAbsPos(10, 30, 100, 150), 123)
+}
 
-	// Handle events
-	glfw.PollEvents()
-	// Push to display
-	window.SwapBuffers()
+func DrawFrame(
+    app *App,
+    context *Context,
+) {
+    ui := NewUI(context, app)
+    ui.Draw()
 }
 
 func makeSegmentVaos(vertices []float32) (uint32, uint32) {
@@ -416,7 +439,7 @@ func readGlyphTexture(tex *GlyphTexture) image.Image {
 	return img
 }
 
-func replaceGlpyhTexture(tex *GlyphTexture, img image.Image) {
+func replaceGlyphTexture(tex *GlyphTexture, img image.Image) {
 	r := img.Bounds()
 	rgba := image.NewRGBA(r)
 	imageDraw.Draw(rgba, r, img, r.Min, imageDraw.Src)
@@ -484,10 +507,10 @@ func CheckGLErrorsPrint(s string) {
 		return
 	}
 
-	fmt.Printf("%v gl.GetError() reports", s)
+	log.Printf("%v gl.GetError() reports", s)
 	for glError != gl.NO_ERROR {
-		fmt.Printf(" %s", GetErrorAsString(glError))
+		log.Printf(" %s\n", GetErrorAsString(glError))
 		glError = gl.GetError()
 	}
-	fmt.Printf("\n")
+    log.Println("")
 }
