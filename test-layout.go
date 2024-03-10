@@ -51,12 +51,24 @@ func (ui *UI) DrawButton(s string) bool {
 
     maxBoxWidth = min(maxBoxWidth, float64(placements.Width) + paddingX * 2.0)
     maxBoxHeight = min(maxBoxHeight, float64(placements.Height + float32(paddingY) * 2.0))
-    DrawQuad(ui.Context, NewAbsPos(boxX, boxY, float32(maxBoxWidth), float32(maxBoxHeight)),  123)
+
+    var color Color
+    mouseOver := ui.Context.PointerState.IsWithin(boxX, boxY, float32(maxBoxWidth), float32(maxBoxHeight))
+    clicked := mouseOver && ui.Context.PointerState.JustActivated
+    if clicked {
+        color = 0x00ff00ff
+        ui.Clicked = id
+    } else if mouseOver {
+        color = 0xff0000ff
+    } else {
+        color = 0x00ffffff
+    }
+
+    DrawQuad(ui.Context, NewAbsPos(boxX, boxY, float32(maxBoxWidth), float32(maxBoxHeight)),  color)
 
     textX := boxX + float32(paddingX)
     textY := boxY + float32(paddingY)
     RenderText2(placements, ui.App, NewAbsPos(textX, textY, 0, 0))
-
     return id == ui.Clicked
 }
 

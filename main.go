@@ -102,21 +102,46 @@ func (a *App) Init(width int, height int, name string) {
     a.ttf = ttf
 }
 
-var done = false;
-
 func (a *App) Loop() {
-
 	for !a.window.ShouldClose() {
+
+        a.UpdatePointerState()
 
         BeginFrame()
 
 		DrawFrame(a, a.context)
 
-        // Handle events
-        glfw.PollEvents()
         // Push to display
         a.window.SwapBuffers()
+
+        // Handle events
+        glfw.PollEvents()
 	}
+}
+
+func (a *App) UpdatePointerState() {
+    ev := a.window.GetMouseButton(glfw.MouseButtonLeft)
+
+    s := &a.context.PointerState
+
+    if ev == glfw.Press {
+        s.Active = true
+        a.context.JustReleased = false
+        a.context.JustActivated = true
+    } else if ev == glfw.Repeat {
+        s.Active = true
+        a.context.JustReleased = false
+        a.context.JustActivated = false
+    } else {
+        a.context.JustReleased = a.context.Active
+        s.Active = false
+        s.JustActivated = false
+    }
+
+    x, y := a.window.GetCursorPos()
+
+    s.PosX = float32(x)
+    s.PosY = float32(y)
 }
 
 func HBFont(font *truetype.Font) *harfbuzz.Font {

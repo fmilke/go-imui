@@ -19,6 +19,31 @@ type Context struct {
 
 	Width uint32
 	Height uint32
+
+    PointerState
+}
+
+type PointerState struct {
+    Active bool
+    JustActivated bool
+    JustReleased bool
+    PosX Float
+    PosY Float
+}
+
+func NewPointerState() PointerState {
+    return PointerState{
+        Active: false,
+        JustActivated: false,
+        JustReleased: false,
+        PosX: .0,
+        PosY: .0,
+    }
+}
+
+func (s *PointerState) IsWithin(x, y, w, h Float) bool {
+    return x <= s.PosX && s.PosX <= (x + w) &&
+        y <= s.PosY && s.PosY <= (y + h)
 }
 
 func (c *Context) ToClipSpaceX(v Float) Float {

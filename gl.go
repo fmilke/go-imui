@@ -198,6 +198,7 @@ func initOpenGL() *Context {
 	ctx := Context{
 		Width:  WIN_WIDTH,
 		Height: WIN_HEIGHT,
+        PointerState: NewPointerState(),
 	}
 
 	ctx.TextShader = CreateTextShader()

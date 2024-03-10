@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/go-gl/gl/v4.1-core/gl"
 )
 
@@ -30,14 +32,13 @@ const (
 
 	out vec4 clr;
 	void main() {
-		clr = color * .31f + vec4(1.0f, 0.5f, .5f, 1.0f);
+        clr = color;
 	}
 	` + "\x00"
 )
 
 type Float = float32
 type Pos = int
-type Color = uint32
 
 const (
 	Absolute Pos = 0
@@ -93,7 +94,10 @@ func DrawQuad(
 		w,
 		h,
 	)
+    
+    c := ColorToGlVec4(color)
+    fmt.Printf("color is: %v\n", c)
+	gl.Uniform4f(context.RectShader.Ul_Color, c[0], c[1], c[2], c[3])
 
-	gl.Uniform4f(context.RectShader.Ul_Color, 1.0, 1.0, 0.0, 1.0)
 	gl.DrawArrays(gl.TRIANGLES, 0, 6)
 }
