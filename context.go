@@ -20,7 +20,7 @@ type Context struct {
 	Width uint32
 	Height uint32
 
-    PointerState
+    PointerState PointerState
 }
 
 type PointerState struct {

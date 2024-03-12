@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 type ElementId = uint32
 
 type UI struct {
@@ -18,7 +20,12 @@ func NewUI(context *Context, app *App) UI {
 
 func (ui *UI) Draw() {
     Begin(ui.Context.Width, ui.Context.Height)
-    ui.DrawButton("Click me")
+    clicked := ui.DrawButton("Click me")
+
+    if clicked {
+        fmt.Println("clicked the button")
+    }
+
     End()
 }
 
@@ -38,11 +45,14 @@ func (ui *UI) DrawButton(s string) bool {
     id := ui.GenerateNewId()
 
     // get from outside
+    // collect input, refactor
     paddingX := 15.0
     paddingY := 10.0
     maxBoxWidth := 400.0
     maxBoxHeight := 200.0
 
+
+    // calculate layout
     boxX := float32(0.0)
     boxY := float32(0.0)
     maxTextWidth := maxBoxWidth - 2.0 * paddingX
@@ -52,9 +62,11 @@ func (ui *UI) DrawButton(s string) bool {
     maxBoxWidth = min(maxBoxWidth, float64(placements.Width) + paddingX * 2.0)
     maxBoxHeight = min(maxBoxHeight, float64(placements.Height + float32(paddingY) * 2.0))
 
+    // determine state
     var color Color
     mouseOver := ui.Context.PointerState.IsWithin(boxX, boxY, float32(maxBoxWidth), float32(maxBoxHeight))
     clicked := mouseOver && ui.Context.PointerState.JustActivated
+
     if clicked {
         color = 0x00ff00ff
         ui.Clicked = id
@@ -64,12 +76,15 @@ func (ui *UI) DrawButton(s string) bool {
         color = 0x00ffffff
     }
 
+    // render elements
     DrawQuad(ui.Context, NewAbsPos(boxX, boxY, float32(maxBoxWidth), float32(maxBoxHeight)),  color)
 
     textX := boxX + float32(paddingX)
     textY := boxY + float32(paddingY)
     RenderText2(placements, ui.App, NewAbsPos(textX, textY, 0, 0))
-    return id == ui.Clicked
+
+    // tell state
+    return clicked
 }
 
 func End() {}

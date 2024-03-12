@@ -108,8 +108,8 @@ func (a *App) Loop() {
         a.UpdatePointerState()
 
         BeginFrame()
-
 		DrawFrame(a, a.context)
+        FinishFrame()
 
         // Push to display
         a.window.SwapBuffers()
@@ -125,15 +125,15 @@ func (a *App) UpdatePointerState() {
     s := &a.context.PointerState
 
     if ev == glfw.Press {
+        s.JustActivated = !s.Active
         s.Active = true
-        a.context.JustReleased = false
-        a.context.JustActivated = true
+        s.JustReleased = false
     } else if ev == glfw.Repeat {
         s.Active = true
-        a.context.JustReleased = false
-        a.context.JustActivated = false
+        s.JustReleased = false
+        s.JustActivated = false
     } else {
-        a.context.JustReleased = a.context.Active
+        s.JustReleased = s.Active
         s.Active = false
         s.JustActivated = false
     }
