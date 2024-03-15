@@ -1,7 +1,5 @@
 package main
 
-import "fmt"
-
 type ElementId = uint32
 
 type UI struct {
@@ -16,17 +14,6 @@ func NewUI(context *Context, app *App) UI {
         Context: context,
         App: app,
     }
-}
-
-func (ui *UI) Draw() {
-    Begin(ui.Context.Width, ui.Context.Height)
-    clicked := ui.DrawButton("Click me")
-
-    if clicked {
-        fmt.Println("clicked the button")
-    }
-
-    End()
 }
 
 func Begin(x, y uint32) {

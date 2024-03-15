@@ -311,14 +311,6 @@ func FinishFrame() {
 
 }
 
-func DrawFrame(
-    app *App,
-    context *Context,
-) {
-    ui := NewUI(context, app)
-    ui.Draw()
-}
-
 func makeSegmentVaos(vertices []float32) (uint32, uint32) {
 	var buffer uint32
 	gl.GenBuffers(1, &buffer)
@@ -368,10 +360,6 @@ func (c *GlyphView) IntoCell(
 	cx int32,
 	cy int32,
 ) {
-
-	if USE_DEBUG_UV {
-		return
-	}
 
 	iw := int32(i.Rect.Size().X)
 	ih := int32(i.Rect.Size().Y)
@@ -442,7 +430,6 @@ func newGlyphTexture(size int32) *GlyphTexture {
 func readGlyphTexture(tex *GlyphTexture) image.Image {
 	gl.BindTexture(GL_TEXTURE_2D, tex.handle)
 	img := image.NewRGBA(image.Rect(0, 0, int(tex.width), int(tex.height)))
-	//gl.ReadPixels(0, 0, tex.width, tex.height, gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(img.Pix))
 	gl.GetTexImage(GL_TEXTURE_2D, 0, gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(img.Pix))
 
 	return img

@@ -108,7 +108,10 @@ func (a *App) Loop() {
         a.UpdatePointerState()
 
         BeginFrame()
-		DrawFrame(a, a.context)
+        ui := NewUI(a.context, a)
+
+        RenderUI(&ui)
+
         FinishFrame()
 
         // Push to display
