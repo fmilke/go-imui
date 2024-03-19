@@ -1,21 +1,16 @@
 package main
 
 import (
-	"fmt"
 	"runtime"
+    . "dyiui/internal/gl"
+    . "dyiui/internal/ui"
+    . "dyiui/internal/layout"
 
-	"github.com/benoitkugler/textlayout/fonts/truetype"
-	"github.com/benoitkugler/textlayout/harfbuzz"
-	"github.com/danielgatis/go-findfont/findfont"
-	"github.com/danielgatis/go-freetype/freetype"
 	"github.com/go-gl/glfw/v3.3/glfw"
 )
 
-const WIN_WIDTH = 640
-const WIN_HEIGHT = 480
 const WIN_NAME = "Testing"
 
-const LOG_FONT = false
 const USE_DEBUG_UV = false
 const DEBUG_SHADERS = true
 const DEBUG = true
@@ -41,13 +36,7 @@ func main() {
 type App struct {
 	window  *glfw.Window
 	context *Context
-
-	fontFace *freetype.Face
-    hbFont *harfbuzz.Font
-    ttf *truetype.Font
-
-	glyphTex  *GlyphTexture
-	glyphView GlyphView
+    renderer *Renderer
 }
 
 func createApp() *App {
@@ -66,40 +55,13 @@ func (a *App) Init(width int, height int, name string) {
 	window.MakeContextCurrent()
 
 	a.window = window
-	a.context = initOpenGL()
+	a.renderer = InitRenderer(WIN_WIDTH, WIN_HEIGHT)
 
-	glTex := newGlyphTexture(1024)
-	
-	if USE_DEBUG_UV {
-		png, err := loadPng("./assets/checkered-uvs.png");
-		if err == nil {
-			replaceGlyphTexture(glTex, png)
-		} else {
-			fmt.Println("Could not load test uv", err)
-		}
-	}
-
-	face := initFace(32)
-
-	view := GlyphView{
-		size: 32,
-		tex:  glTex,
-	}
-
-    // setup harfbuzz
-	path := GetSomeFont()
-	ttf, err := LoadTTF(path)
-	if err != nil {
-		panic(err)
-	}
-
-	hbFont := HBFont(ttf)
-
-	a.glyphTex = glTex
-	a.glyphView = view
-	a.fontFace = face
-    a.hbFont = hbFont
-    a.ttf = ttf
+    a.context = &Context{
+        Width: WIN_WIDTH,
+        Height: WIN_HEIGHT,
+        PointerState: NewPointerState(),
+    }
 }
 
 func (a *App) Loop() {
@@ -108,7 +70,7 @@ func (a *App) Loop() {
         a.UpdatePointerState()
 
         BeginFrame()
-        ui := NewUI(a.context, a)
+        ui := NewUI(a.context, a.renderer)
 
         RenderUI(&ui)
 
@@ -147,23 +109,10 @@ func (a *App) UpdatePointerState() {
     s.PosY = float32(y)
 }
 
-func HBFont(font *truetype.Font) *harfbuzz.Font {
-	return harfbuzz.NewFont(font)
-}
-
 type GlyphInfo struct {
 	XOffset int
 	YOffset int
 	XAdvance int
 }
 
-func GetSomeFont() string {
-	fs, err := findfont.Find("Noto Sans", findfont.FontRegular)
 
-	if err != nil {
-		panic(err)
-	}
-
-	path := fs[0][2]
-	return path
-}

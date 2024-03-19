@@ -1,4 +1,4 @@
-module go-test
+module dyiui
 
 go 1.21.1
 
