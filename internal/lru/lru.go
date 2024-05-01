@@ -1,9 +1,12 @@
 package lru
 
-type Entries[T any] map[rune]*LRUCacheEntry[T]
+import "github.com/benoitkugler/textlayout/fonts"
+
+type Key = fonts.GID
+type Entries[T any] map[Key]*LRUCacheEntry[T]
 
 type LRUCacheEntry[T any] struct {
-    key rune
+    key Key
 	value T
 	newer *LRUCacheEntry[T]
 	older *LRUCacheEntry[T]
@@ -45,14 +48,16 @@ func (e *LRUCacheEntry[T]) unplug() {
 	}
 }
 
-func (cache *LRUCache[T]) Get(key rune) *T {
+func (cache *LRUCache[T]) Get(key Key) *T {
 	e := cache.entries[key]
 
 	if e == nil {
-        var r T
-		return &r
+		return nil
 	}
 
+    // this introduces two invariants for the rest of the function
+    // 1) the entry is not the newest
+    // 2) there is more than a single entry in the cache (otherwise 1) would not hold)
     if e == cache.newest {
         return &e.value
     }
@@ -67,7 +72,7 @@ func (cache *LRUCache[T]) Get(key rune) *T {
 	return &e.value
 }
 
-func (cache *LRUCache[T]) Store(key rune, v T) {
+func (cache *LRUCache[T]) Store(key Key, v T) {
     e := cache.entries[key]
 
     if e != nil {
@@ -96,9 +101,7 @@ func (cache *LRUCache[T]) Store(key rune, v T) {
 
         cache.entries[key] = e
     }
-
     cache.newest = e
-
     if cache.oldest == nil {
         cache.oldest = e
     }

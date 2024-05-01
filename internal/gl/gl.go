@@ -48,6 +48,8 @@ func ToGlClipSpace(value Float, dim Float) Float {
 
 type ProgramId = uint32
 type UniformId = int32
+type BufferId = uint32
+type VaoId = uint32
 
 const INACTIVE_UNIFORM int32 = -1
 
@@ -197,7 +199,7 @@ func (r *Renderer) GetAtlas() *Atlas {
     atlas := r.atlases.Get(id)
 
     if atlas == nil {
-        fmt.Printf("atlas not existing yet, creating one")
+        fmt.Printf("atlas not existing yet, creating one\n")
         tex := NewGlyphTexture(1024)
         atlas = r.atlases.Add(id, *tex)
     }
@@ -266,6 +268,18 @@ func FinishFrame() {
 
 }
 
+func makeTextVertexArrays(vertices []float32) {
+    var buffer BufferId
+    gl.GenBuffers(1, &buffer)
+    gl.BindBuffer(gl.ARRAY_BUFFER, buffer)
+	gl.BufferData(gl.ARRAY_BUFFER, 4*len(vertices), gl.Ptr(vertices), gl.STATIC_DRAW)
+
+    var vao VaoId
+    gl.GenVertexArrays(1, &vao)
+    gl.BindVertexArray(vao)
+    gl.BindBuffer(gl.ARRAY_BUFFER, buffer)
+}
+
 func makeSegmentVaos(vertices []float32) (uint32, uint32) {
 	var buffer uint32
 	gl.GenBuffers(1, &buffer)
@@ -307,42 +321,6 @@ func compileShader(source string, shaderType uint32) (uint32, error) {
 	}
 
 	return shader, nil
-}
-
-func (c *GlyphView) IntoCell(
-	t *GlyphTexture,
-	i *image.RGBA,
-	cx int32,
-	cy int32,
-) {
-
-	iw := int32(i.Rect.Size().X)
-	ih := int32(i.Rect.Size().Y)
-
-	cw := t.width / c.size
-	ch := t.height / c.size
-
-	gl.BindTexture(t.target, t.handle)
-	CheckGLErrorsPrint("BindTexture")
-
-	w := int32(iw)
-	h := int32(ih)
-
-	x := cx * cw
-	//	y := t.height - cy*ch - h
-	y := cy * ch
-
-	gl.TexSubImage2D(
-		t.target,
-		0,
-		x,
-		y,
-		w,
-		h,
-		gl.RGBA,
-		gl.UNSIGNED_BYTE,
-		gl.Ptr(i.Pix),
-	)
 }
 
 const GL_TEXTURE_2D = uint32(gl.TEXTURE_2D)

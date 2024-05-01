@@ -1,11 +1,17 @@
 package gl
 
 import (
-    "image"
-    . "dyiui/internal/types"
+	"dyiui/internal/lru"
+	"dyiui/internal/types"
+	"image"
+
+	"github.com/benoitkugler/textlayout/fonts"
+	"github.com/go-gl/gl/v4.1-core/gl"
 )
 
 type AtlasId = int
+
+// AtlasRepo
 
 type AtlasRepo struct {
     entries []Atlas
@@ -25,9 +31,11 @@ func (at *AtlasRepo) Add(id AtlasId, tex GlyphTexture) *Atlas {
 		tex:  &tex,
 	}
 
+    storeableGlyphs:=1024
     a := Atlas {
-        GlyphView: view,
-        GlyphTexture: tex,
+        GlyphView: &view,
+        GlyphTexture: &tex,
+        Cache: lru.NewLRUCache[CacheEntry](uint(storeableGlyphs)),
     }
 
     at.entries = append(at.entries, a)
@@ -35,74 +43,75 @@ func (at *AtlasRepo) Add(id AtlasId, tex GlyphTexture) *Atlas {
     return &a
 }
 
+
+// Atlas
+
+type CacheEntry = types.Quad
+
 type Atlas struct {
-    GlyphView GlyphView
-    GlyphTexture GlyphTexture
+    GlyphView *GlyphView
+    GlyphTexture *GlyphTexture
+    Cache *lru.LRUCache[CacheEntry]
 }
+
+func (at *Atlas) GetSlot(r fonts.GID) (types.Quad, bool) {
+    if e := at.Cache.Get(r); e != nil {
+        return *e, true
+    } else {
+        q := at.GlyphView.Next()
+        at.Cache.Store(r, q)
+        return q, false
+    }
+}
+
+// Glyph View
 
 type GlyphView struct {
 	size int32
 	tex  *GlyphTexture
+    next int
 }
 
-var EmptyQuad = Quad{}
+func (view *GlyphView) Next() types.Quad {
 
-type GlyphAtlas struct {
-	index map[rune]Quad
-	tex GlyphTexture
+    cellsPerRow := int(view.tex.width / view.size)
+    cellsPerCol := int(view.tex.height / view.size)
+
+    x := view.next % cellsPerRow
+    y := view.next / cellsPerCol
+
+    view.next += 1
+
+    return types.Quad {
+        X: float32(x * int(view.size)),
+        Y: float32(y * int(view.size)),
+        W: float32(view.size),
+        H: float32(view.size),
+    }
 }
 
-func NewGlyphAtlas(tex *GlyphTexture) GlyphAtlas {
-	return GlyphAtlas {
-		index: make(map[rune]Quad),
-		tex: *tex,
-	}
+func (view *GlyphView) IntoCell(
+	t *GlyphTexture,
+	i *image.RGBA,
+    pos types.Quad,
+) {
+    // todo handle difference between
+    // rect size and cell size
+	iw := int32(i.Rect.Size().X)
+	ih := int32(i.Rect.Size().Y)
+
+	gl.BindTexture(t.target, t.handle)
+	CheckGLErrorsPrint("BindTexture")
+
+	gl.TexSubImage2D(
+		t.target,
+		0,
+		int32(pos.X),
+		int32(pos.Y),
+		iw,
+		ih,
+		gl.RGBA,
+		gl.UNSIGNED_BYTE,
+		gl.Ptr(i.Pix),
+	)
 }
-
-func (at GlyphAtlas) AddQuad(r rune, q Quad) {
-	at.index[r] = q
-}
-
-// TODO: Add Pixel size and font family
-func (at GlyphAtlas) GetQuad(r rune) (Quad, bool) {
-	q, ok := at.index[r]
-
-	if ok {
-		return q, true
-	} else {
-		return EmptyQuad, false
-	}
-}
-
-
-// Alternate text atlas
-
-
-type Node struct
-{
-	Child [2]*Node
-	Rect Quad
-	ImageId int
-}
-
-func (n *Node) IsLeaf() bool {
-	return n.Child[0] == nil && n.Child[1] == nil
-}
-
-func (n *Node) CanContainImage(i int) {
-}
-
-func (n *Node) Insert(i image.Image) *Node {
-	if n.IsLeaf() {
-		isOccupied := n.ImageId != 0
-		if isOccupied {
-			return nil
-		}
-
-
-	} else {
-	}
-
-	return nil
-}
-

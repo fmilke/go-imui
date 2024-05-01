@@ -1,9 +1,9 @@
 package gl
 
 import (
+	"dyiui/internal/text"
 	"math"
 	"testing"
-    . "dyiui/internal/text"
 
 	"github.com/benoitkugler/textlayout/fonts/truetype"
 	"github.com/benoitkugler/textlayout/harfbuzz"
@@ -58,14 +58,14 @@ type TestFont struct {
 }
 
 func LoadTestFont () TestFont {
-	path := GetSomeFont()
-	ttf, err := LoadTTF(path)
+	path := text.GetSomeFont()
+	ttf, err := text.LoadTTF(path)
 
 	if err != nil {
 		panic(err)
 	}
 
-	hbFont := HBFont(ttf)
+	hbFont := text.HBFont(ttf)
 
 	return TestFont {
 		path,

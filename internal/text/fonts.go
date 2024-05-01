@@ -10,7 +10,6 @@ import (
 
 	"github.com/benoitkugler/textlayout/fonts/truetype"
 	"github.com/benoitkugler/textlayout/harfbuzz"
-	"github.com/danielgatis/go-findfont/findfont"
 	"github.com/danielgatis/go-freetype/freetype"
 )
 
@@ -137,12 +136,12 @@ func HBFont(font *truetype.Font) *harfbuzz.Font {
 }
 
 func GetSomeFont() string {
-	fs, err := findfont.Find("Noto Sans", findfont.FontRegular)
+	//fs, err := findfont.Find("Noto Sans", findfont.FontRegular)
 
-	if err != nil {
-		panic(err)
-	}
+	//if err != nil {
+	//	panic(err)
+	//}
 
-	path := fs[0][2]
-	return path
+	//path := fs[0][2]
+	return "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf"
 }

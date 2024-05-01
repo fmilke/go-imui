@@ -6,20 +6,22 @@ import (
 	"os"
 	"unicode"
 
+	"github.com/benoitkugler/textlayout/fonts"
 	"github.com/benoitkugler/textlayout/fonts/truetype"
 	"github.com/benoitkugler/textlayout/harfbuzz"
+	"github.com/benoitkugler/textlayout/language"
 	"github.com/danielgatis/go-freetype/freetype"
 	"github.com/go-gl/gl/v4.1-core/gl"
 
-    . "dyiui/internal/types"
-    . "dyiui/internal/units"
+	. "dyiui/internal/types"
+	. "dyiui/internal/units"
 )
 
-const DEBUG_GLYPH_PLACEMENT = false;
+const DEBUG_GLYPH_PLACEMENT = false
 
-const DEB_UV = 2;
-const DEB_POS = 1;
-const DEBUG_GLYPH_COMPONENTS = 0;
+const DEB_UV = 2
+const DEB_POS = 1
+const DEBUG_GLYPH_COMPONENTS = 0
 const LOG_FONT = false
 
 const WIN_WIDTH = 640
@@ -46,12 +48,12 @@ func InsertGlyph(
 	base_line := float32(30.0)
 
 	x := xAdv * px_x
-	y := (base_line-char_hbear_y + yOffset) * px_y
+	y := (base_line - char_hbear_y + yOffset) * px_y
 
 	w := char_width * px_x
 	h := char_height * px_y
 
-	pos := Quad {
+	pos := Quad{
 		X: x,
 		Y: y,
 		W: w,
@@ -63,7 +65,7 @@ func InsertGlyph(
 	}
 
 	if DEBUG_GLYPH_COMPONENTS > 0 {
-		if DEBUG_GLYPH_COMPONENTS & DEB_UV > 0 {
+		if DEBUG_GLYPH_COMPONENTS&DEB_UV > 0 {
 			fmt.Printf("Location In GlpyhTex: %v\n", uvs)
 		}
 
@@ -72,7 +74,7 @@ func InsertGlyph(
 
 	insertGlyphComponents(
 		verts,
-		i + offset,
+		i+offset,
 		pos,
 		uvs,
 	)
@@ -171,11 +173,13 @@ func GetFace(path string, px float32) (*freetype.Face, error) {
 	return face, nil
 }
 
+func GetGlyphBitmap(gid fonts.GID, a *freetype.Face) (*image.RGBA, *freetype.Metrics, error) {
+    return a.GlyphByGid(int(gid))
+}
 
+func InitTex(rn fonts.GID, face *freetype.Face) (*image.RGBA, *freetype.Metrics) {
 
-func InitTex(rn rune, face *freetype.Face) (*image.RGBA, *freetype.Metrics) {
-
-	img, metrics, err := face.Glyph(rn)
+	img, metrics, err := face.Glyph(rune(rn))
 	if err != nil {
 		panic(err)
 	}
@@ -197,16 +201,20 @@ func InitTex(rn rune, face *freetype.Face) (*image.RGBA, *freetype.Metrics) {
 type Glyph struct {
 	XAdvance float32
 	YAdvance float32
-	XOffset float32
-	YOffset float32
-	R rune
+	XOffset  float32
+	YOffset  float32
+    GID      fonts.GID
 }
 
 type Segment struct {
 	Glyphs []Glyph
-	Width float32
+	Width  float32
 }
 
+/*
+Split text into array of words,
+while ignoring whitespace
+*/
 func SplitIntoSegments(text string) []string {
 
 	var segs []string
@@ -242,26 +250,29 @@ func CalculateSegment(
 	buf := harfbuzz.NewBuffer()
 	rs := []rune(text)
 
-	buf.AddRunes(rs, 0, len(rs))
+	buf.AddRunes(rs, 0, -1)
 	buf.Props.Direction = harfbuzz.LeftToRight
+	buf.Props.Language = language.DefaultLanguage()
+	buf.Props.Script = language.Latin
 	buf.Shape(hbFont, []harfbuzz.Feature{})
-
 	metric := GetDefaultMetric()
 	factor := float32(FontScaleFactor(ttf, metric, Sp(fontSize)))
 
 	var segment Segment
 
 	for i, g := range buf.Pos {
+
 		segment.Glyphs = append(segment.Glyphs, Glyph{
 			XAdvance: float32(g.XAdvance) * factor,
 			YAdvance: float32(g.YAdvance) * factor,
-			XOffset: float32(g.XOffset),
-			YOffset: float32(g.YOffset),
-			R: rs[i],
+			XOffset:  float32(g.XOffset),
+			YOffset:  float32(g.YOffset),
+			GID:      buf.Info[i].Glyph,
 		})
 
 		segment.Width += float32(g.XAdvance) * factor
 	}
+
 
 	return segment
 }
@@ -270,13 +281,10 @@ const VERTS_PER_GLYPH = 6
 const COMPS_PER_VERT = 4
 const COMPS_PER_GLYPH = VERTS_PER_GLYPH * COMPS_PER_VERT
 
-var cid = 0
-
 func CopyGlyphDataIntoVertexBuffer(
 	placement *PlacedSegment,
 	fontFace *freetype.Face,
-	glyphView *GlyphView,
-	glyphTex *GlyphTexture,
+	atlas *Atlas,
 	offset int,
 	vertices []float32,
 ) int {
@@ -287,52 +295,34 @@ func CopyGlyphDataIntoVertexBuffer(
 
 	for _, g := range segment.Glyphs {
 
-		if g.R == ' ' {
-			// TODO: Is this generalizable? What is the actual
-			// error to catch here?
-			fmt.Println("Whitespace found in segment. This should never happen")
-			continue
+		// Upload rasterized image
+		rasterized, metrics, err := GetGlyphBitmap(g.GID, fontFace)
+        // TODO: use fallback?
+        if err != nil {
+            panic(err)
+        }
+
+		// TODO: Don't upload, if still in texture
+		q, cached := atlas.GetSlot(g.GID)
+		if !cached {
+			atlas.GlyphView.IntoCell(atlas.GlyphView.tex, rasterized, q)
 		}
 
-		// Copy rasterized image
-		rasterized, metrics := InitTex(g.R, fontFace)
+		widthRatio := float32(metrics.Width) / 32.0
+		heightRatio := float32(metrics.Height) / 32.0
 
-		// Copy into texture
-		x := int32(cid % 32)
-		y := int32(cid / 32)
-		glyphView.IntoCell(glyphTex, rasterized, x, y)
-
-		// Write vertex buffer
-		// TODO: Properly get uvs from texture placement
-		cellWidth := float32(1024 / 32)
-		cellHeight := float32(1024 / 32)
-	
-		widthRatio := float32(metrics.Width) / cellWidth
-		heightRatio := float32(metrics.Height) / cellHeight
-
-		cx := float32(int(float32(cid)) % 32.0)
-		cy := float32(int(float32(cid)) / 32.0)
-	
-		uSize := 1.0/cellWidth * widthRatio
-		vSize := 1.0/cellHeight * heightRatio
-	
-		uOffset := float32(cx)*float32(32.0/1024.0)
-		vOffset := float32(cy)*float32(32.0/1024.0)
-
-		uvs := Quad {
-			X: uOffset,
-			Y: vOffset,
-			W: uSize,
-			H: vSize,
+		// TODO: Remove mapping to uv-space. Should be done within caching data structure
+		uvs := Quad{
+			X: q.X / 1024,
+			Y: q.Y / 1024,
+			W: q.W / 1024 * float32(widthRatio),
+			H: q.H / 1024 * float32(heightRatio),
 		}
-
-		//fmt.Printf("uvs: %v\n", uvs)
 
 		InsertGlyph(xadv, placement.YOffset, coi, &vertices, metrics, offset, uvs)
-		cid++
 
 		if DEBUG_GLYPH_PLACEMENT {
-			fmt.Printf("Rune: %v, xadv: %v\n", string(g.R), xadv)
+			fmt.Printf("Rune: %v, xadv: %v\n", g.GID, xadv)
 		}
 
 		xadv += g.XAdvance
@@ -350,7 +340,7 @@ func FontScaleFactor(font *truetype.Font, m Metric, size Sp) float32 {
 	return factor
 }
 
-func PlaceSegments (
+func PlaceSegments(
 	text string,
 	ttf *truetype.Font,
 	hbFont *harfbuzz.Font,
@@ -363,7 +353,7 @@ func PlaceSegments (
 
 	segs := SplitIntoSegments(text)
 
-	var currentWidth float32 = - whiteSpacesWidth
+	var currentWidth float32 = -whiteSpacesWidth
 
 	// TODO: Handle case where text is empty and we have no line at all
 	var totalHeight = lineHeight
@@ -376,7 +366,7 @@ func PlaceSegments (
 
 		run := CalculateSegment(ttf, seg, hbFont, 32)
 
-		breakLine := currentWidth + run.Width + whiteSpacesWidth > allowedWidth
+		breakLine := currentWidth+run.Width+whiteSpacesWidth > allowedWidth
 
 		if breakLine {
 			currentWidth = run.Width
@@ -390,7 +380,7 @@ func PlaceSegments (
 			totalWidth = max(totalWidth, currentWidth)
 		}
 
-		placed := PlacedSegment {
+		placed := PlacedSegment{
 			Segment: run,
 			XOffset: xOffset,
 			YOffset: yOffset,
@@ -400,10 +390,10 @@ func PlaceSegments (
 		placedSegs = append(placedSegs, placed)
 	}
 
-	return RenderTextResult {
-		Width: totalWidth,
-		Height: totalHeight,
-		Indices: indicesToRender,
+	return RenderTextResult{
+		Width:          totalWidth,
+		Height:         totalHeight,
+		Indices:        indicesToRender,
 		PlacedSegments: placedSegs,
 	}
 }
@@ -415,34 +405,13 @@ type PlacedSegment struct {
 }
 
 type RenderTextResult struct {
-	Height float32
-	Width float32
-	Indices int
+	Height         float32
+	Width          float32
+	Indices        int
 	PlacedSegments []PlacedSegment
 }
 
-func RenderText(
-	text string,
-	ttf *truetype.Font,
-	hbFont *harfbuzz.Font,
-	fontFace *freetype.Face,
-	glyphView GlyphView,
-	glyphTex *GlyphTexture,
-) int {
-	indicesToRender := 0
-	offset := 0
-
-	placement := PlaceSegments(text, ttf, hbFont, fontFace, 640.0, 32.0)
-	vertices := make([]float32, placement.Indices*COMPS_PER_GLYPH)
-
-	for _, p := range placement.PlacedSegments {
-		indicesToRender += CopyGlyphDataIntoVertexBuffer(&p, fontFace, &glyphView, glyphTex, offset, vertices)
-		offset += len(p.Segment.Glyphs) * COMPS_PER_GLYPH
-	}
-
-	makeSegmentVaos(vertices)
-
-	return indicesToRender
+func (renderer *Renderer) UploadTextVertices(vertices []float32) {
 }
 
 // TODO: caching can be removed, once glyph atlas is working
@@ -451,52 +420,45 @@ var indicesToRenderCached int = 0
 var verticesCached []float32
 
 type RenderTextArgs struct {
-    GlyphView GlyphView
-    GlyphTex GlyphTexture
-    FontFace *freetype.Face
+	GlyphView *GlyphView
+	GlyphTex  *GlyphTexture
+	FontFace  *freetype.Face
 }
 
-func (renderer *Renderer) RenderText2(placement RenderTextResult, args *RenderTextArgs, pos Quad) {
-    indicesToRender := 0
+func (renderer *Renderer) RenderText(placement RenderTextResult, args *RenderTextArgs, pos Quad) {
+	indicesToRender := 0
 	offset := 0
 
-    if verticesCached == nil {
-        verticesCached = make([]float32, placement.Indices*COMPS_PER_GLYPH)
+	verticesCached = make([]float32, placement.Indices*COMPS_PER_GLYPH)
 
-        for _, p := range placement.PlacedSegments {
-            indicesToRender += CopyGlyphDataIntoVertexBuffer(&p, args.FontFace, &args.GlyphView, &args.GlyphTex, offset, verticesCached)
-            offset += len(p.Segment.Glyphs) * COMPS_PER_GLYPH
-        }
-
-        indicesToRenderCached = indicesToRender
-    } else {
-        indicesToRender = indicesToRenderCached
-    }
+	for _, p := range placement.PlacedSegments {
+		indicesToRender += CopyGlyphDataIntoVertexBuffer(&p, args.FontFace, renderer.GetAtlas(), offset, verticesCached)
+		offset += len(p.Segment.Glyphs) * COMPS_PER_GLYPH
+	}
 
 	makeSegmentVaos(verticesCached)
 
-    x := renderer.ToClipSpaceX(pos.X)
-    y := renderer.ToClipSpaceY(pos.Y)
+	x := renderer.ToClipSpaceX(pos.X)
+	y := renderer.ToClipSpaceY(pos.Y)
 
-    gl.UseProgram(renderer.shaders.TextShader.Program)
+	gl.UseProgram(renderer.shaders.TextShader.Program)
 
-    // TODO: use some method to retrieve texture atlas
-    atlas := renderer.GetAtlas()
-    if atlas != nil {
-        gl.BindTexture(atlas.GlyphTexture.target, atlas.GlyphTexture.handle)
-    }
+	// TODO: use some method to retrieve texture atlas
+	atlas := renderer.GetAtlas()
+	if atlas != nil {
+		gl.BindTexture(atlas.GlyphTexture.target, atlas.GlyphTexture.handle)
+	}
 
-    // set offset
+	// set offset
 	gl.Uniform2f(
 		renderer.shaders.TextShader.Ul_Offset,
 		x,
 		y,
 	)
 
-    gl.Uniform1f(renderer.shaders.TextShader.Ul_Wireframe, .0) // read from context
-    gl.Uniform3f(renderer.shaders.TextShader.Ul_TextColor, .3, .3, .3)
+	gl.Uniform1f(renderer.shaders.TextShader.Ul_Wireframe, .0) // read from context
+	gl.Uniform3f(renderer.shaders.TextShader.Ul_TextColor, .3, .3, .3)
 
-    gl.ActiveTexture(gl.TEXTURE0)
-    gl.DrawArrays(gl.TRIANGLES, 0, int32(indicesToRender))
+	gl.ActiveTexture(gl.TEXTURE0)
+	gl.DrawArrays(gl.TRIANGLES, 0, int32(indicesToRender))
 }
-

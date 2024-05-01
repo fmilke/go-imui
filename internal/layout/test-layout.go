@@ -93,7 +93,7 @@ func (ui *UI) DrawButton(s string) bool {
         GlyphTex: atlas.GlyphTexture,
     }
 
-    ui.Renderer.RenderText2(placements, &args, NewQuad(textX, textY, 0, 0))
+    ui.Renderer.RenderText(placements, &args, NewQuad(textX, textY, 0, 0))
 
     // tell state
     return clicked

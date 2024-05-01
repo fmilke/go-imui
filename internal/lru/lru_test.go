@@ -30,7 +30,7 @@ func TestEntryReplaced(t *testing.T) {
     c.Store('c', 4)
 
     v = c.Get('r')
-    if *v == toInsert {
+    if v != nil && *v == toInsert {
         t.Fatal("Failed to replace value, when cache is filled")
     }
 }
@@ -51,12 +51,12 @@ func TestEntryNotReplacedSinceUsed(t *testing.T) {
     c.Store('c', 4)
 
     v = c.Get('r')
-    if *v == toInsert {
+    if v != nil && *v == toInsert {
         t.Fatal("Failed to replace value, when cache is filled")
     }
 
     v = c.Get('a')
-    if *v == 0 {
+    if v != nil && *v == 0 {
         t.Fatal("Failed to replace value, when cache is filled")
     }
 }

@@ -1,10 +1,11 @@
 package main
 
 import (
+	. "dyiui/internal/gl"
+	. "dyiui/internal/layout"
+	. "dyiui/internal/ui"
 	"runtime"
-    . "dyiui/internal/gl"
-    . "dyiui/internal/ui"
-    . "dyiui/internal/layout"
+	"time"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
 )
@@ -16,8 +17,7 @@ const DEBUG_SHADERS = true
 const DEBUG = true
 
 func init() {
-	runtime.LockOSThread()
-}
+	runtime.LockOSThread() }
 
 func main() {
 
@@ -81,6 +81,8 @@ func (a *App) Loop() {
 
         // Handle events
         glfw.PollEvents()
+
+        time.Sleep(time.Millisecond * 3)
 	}
 }
 
@@ -108,11 +110,4 @@ func (a *App) UpdatePointerState() {
     s.PosX = float32(x)
     s.PosY = float32(y)
 }
-
-type GlyphInfo struct {
-	XOffset int
-	YOffset int
-	XAdvance int
-}
-
 
